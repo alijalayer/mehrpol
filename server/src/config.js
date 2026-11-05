@@ -55,7 +55,9 @@ export function loadConfig(overrides = {}) {
     allowTestPayments: env.ALLOW_TEST_PAYMENTS === 'true' && env.NODE_ENV !== 'production',
     // phone | email | both. The panel's mode switch overrides this.
     loginChannel: ['phone', 'email', 'both'].includes(env.LOGIN_CHANNEL) ? env.LOGIN_CHANNEL : undefined,
-    trustProxy: env.TRUST_PROXY === 'true',
+    // true, or the proxy's address (e.g. 127.0.0.1 for an Apache/nginx on the same server) so only it
+    // can tell us the visitor's real IP and that the connection was https.
+    trustProxy: env.TRUST_PROXY === 'true' ? true : /^[\d.:,\s]+$/.test(env.TRUST_PROXY ?? '') ? env.TRUST_PROXY : false,
     sms: { provider: env.SMS_PROVIDER ?? 'console', apiKey: env.SMS_API_KEY ?? '', template: env.SMS_TEMPLATE ?? '' },
     payment: {
       provider: env.PAYMENT_PROVIDER ?? 'mock',
