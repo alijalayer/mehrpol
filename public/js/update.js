@@ -1,5 +1,8 @@
 import { api } from './api.js';
-import { fa, h, icon, toast } from './ui.js';
+import { h, icon, toast } from './ui.js';
+
+/** "1.0.5" with Persian digits; a version is text, not a number. */
+export const faVersion = (v) => String(v).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
 
 /** True inside the Android app (Capacitor), false in a normal browser. */
 export const isNativeApp = () => !!window.Capacitor?.isNativePlatform?.();
@@ -27,7 +30,7 @@ const RELEASES_PAGE = 'https://github.com/alijalayer/mehrpol/releases/latest';
 export function downloadButton(release, cls = 'btn btn-primary') {
   const old = installedVersion() === 0;
   return h('a', { class: cls, href: old ? RELEASES_PAGE : release.url, ...(old ? { target: '_blank', rel: 'noopener' } : { download: `mehrpol-${release.version}.apk` }) },
-    icon('download'), `دریافت نسخهٔ ${fa(release.version)}`);
+    icon('download'), `دریافت نسخهٔ ${faVersion(release.version)}`);
 }
 
 /** Banner shown inside the Android app when a newer version is published (dismissible per session). */
@@ -43,7 +46,7 @@ export async function updateNotice() {
   const bar = h('div', { class: 'update-bar', role: 'status' },
     icon('sparkle'),
     h('div', { class: 'grow' },
-      h('strong', {}, `نسخهٔ جدید مهرپل (${fa(r.version)}) آماده است`),
+      h('strong', {}, `نسخهٔ جدید مهرپل (${faVersion(r.version)}) آماده است`),
       h('div', { class: 'muted small' }, current === 0
         ? 'این نسخه یک‌بار باید جداگانه نصب شود: پس از دانلود، اگر نصب انجام نشد، اپ فعلی را حذف و فایل دانلودشده را نصب کنید.'
         : r.notes || 'پس از دانلود، فایل را باز کنید تا روی نسخهٔ فعلی نصب شود؛ اطلاعات حسابتان حفظ می‌شود.')),
