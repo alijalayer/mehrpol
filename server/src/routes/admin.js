@@ -28,6 +28,7 @@ export default async function adminRoutes(app, ctx) {
       payee: decryptText(config.dataKey, row.payee_enc),
       reviewNote: row.review_note,
       owner: {
+        id: row.user_id,
         phone: owner.phone,
         fullName: decryptText(config.dataKey, owner.full_name_enc),
         nationalCode: decryptText(config.dataKey, owner.national_code_enc),
@@ -39,11 +40,19 @@ export default async function adminRoutes(app, ctx) {
   };
 
   app.get('/api/admin/cases', {
-    schema: { querystring: { type: 'object', properties: { status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'funded', 'paid'], default: 'pending' } } } },
+    schema: { querystring: { type: 'object', properties: { status: { type: 'string', enum: ['all', 'pending', 'approved', 'rejected', 'funded', 'paid'], default: 'pending' } } } },
   }, async (req) => {
-    requireAdmin(req);
-    const rows = db.prepare('SELECT * FROM cases WHERE status = ? ORDER BY created_at ASC LIMIT 200').all(req.query.status);
-    return { items: rows.map((r) => ({ ...publicCase(r), id: r.id })) };
+    const admin = requireAdmin(req);
+    const { status } = req.query;
+    // The review queue is oldest first; every other view shows the newest first.
+    const rows = db.prepare(`
+      SELECT c.*, u.phone, u.full_name_enc FROM cases c JOIN users u ON u.id = c.user_id
+      ${status === 'all' ? '' : 'WHERE c.status = ?'} ORDER BY c.created_at ${status === 'pending' ? 'ASC' : 'DESC'} LIMIT 300`)
+      .all(...(status === 'all' ? [] : [status]));
+    audit(db, admin.id, 'admin.cases.listed', null, { status });
+    return {
+      items: rows.map((r) => ({ ...publicCase(r), id: r.id, owner: { id: r.user_id, phone: r.phone, fullName: decryptText(config.dataKey, r.full_name_enc) } })),
+    };
   });
 
   app.get('/api/admin/cases/:id', async (req) => {

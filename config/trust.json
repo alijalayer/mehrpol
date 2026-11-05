@@ -3,6 +3,12 @@
     "name": "مهرپل",
     "tagline": "پلی میان دست‌های گشاده و نیازهای واقعی"
   },
+  "creator": {
+    "name": "علی جلایر",
+    "role": "ایده‌پرداز و سازندهٔ مهرپل",
+    "link": "https://github.com/alijalayer",
+    "about": ""
+  },
   "organization": {
     "name": "",
     "registrationNo": "",
@@ -39,9 +45,24 @@
     }
   ],
   "documents": [
-    { "title": "مجوز جمع‌آوری کمک‌های مردمی", "number": "", "issuer": "", "link": "" },
-    { "title": "قرارداد همکاری با مؤسسهٔ خیریه", "number": "", "issuer": "", "link": "" },
-    { "title": "قرارداد درگاه پرداخت", "number": "", "issuer": "", "link": "" }
+    {
+      "title": "مجوز جمع‌آوری کمک‌های مردمی",
+      "number": "",
+      "issuer": "",
+      "link": ""
+    },
+    {
+      "title": "قرارداد همکاری با مؤسسهٔ خیریه",
+      "number": "",
+      "issuer": "",
+      "link": ""
+    },
+    {
+      "title": "قرارداد درگاه پرداخت",
+      "number": "",
+      "issuer": "",
+      "link": ""
+    }
   ],
   "sourceCodeUrl": "https://github.com/alijalayer/mehrpol"
 }

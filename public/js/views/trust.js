@@ -37,7 +37,19 @@ export async function trustView(page) {
     h('section', { class: 'card' }, h('h2', {}, icon('code'), 'کد متن‌باز'),
       h('p', { class: 'muted' }, 'کد کامل این برنامه منتشر شده تا هر متخصصی بتواند امنیت و درستی آن را بررسی کند.'),
       trust.sourceCodeUrl ? h('a', { class: 'btn btn-ghost', href: trust.sourceCodeUrl, target: '_blank', rel: 'noopener noreferrer' }, icon('code'), 'مشاهدهٔ کد در گیت‌هاب') : h('span', { class: 'placeholder-text' }, 'لینک مخزن کد تکمیل می‌شود')),
+    creatorCard(trust.creator),
     h('a', { class: 'btn btn-primary btn-block', href: '#/ledger' }, icon('receipt'), 'دفتر عمومی پرداخت‌ها'));
+}
+
+function creatorCard(c) {
+  if (!c?.name) return '';
+  return h('section', { class: 'card creator-card' },
+    h('span', { class: 'creator-mark', 'aria-hidden': 'true' }, c.name.trim().charAt(0)),
+    h('div', { class: 'grow' },
+      h('div', { class: 'muted small' }, c.role || 'ایده و ساخت'),
+      h('h2', {}, c.name),
+      c.about ? h('p', { class: 'small' }, c.about) : h('p', { class: 'small muted' }, 'مهرپل از یک ایدهٔ ساده شروع شد: کمک باید بی‌واسطه، شفاف و قابل پیگیری به دست صاحبش برسد.'),
+      c.link ? h('a', { class: 'small', href: c.link, target: '_blank', rel: 'noopener noreferrer' }, 'ارتباط با سازنده') : null));
 }
 
 export async function ledgerView(page) {

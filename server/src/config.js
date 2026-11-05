@@ -25,6 +25,7 @@ export function loadConfig(overrides = {}) {
   const production = env.NODE_ENV === 'production';
   const dataDir = resolve(overrides.dataDir ?? env.DATA_DIR ?? join(ROOT, 'data'));
   mkdirSync(join(dataDir, 'uploads'), { recursive: true });
+  mkdirSync(join(dataDir, 'public'), { recursive: true });
 
   let dataKey = env.DATA_KEY;
   if (!dataKey) {
@@ -44,6 +45,7 @@ export function loadConfig(overrides = {}) {
     dataDir,
     dbFile: join(dataDir, 'mehrpol.db'),
     uploadDir: join(dataDir, 'uploads'),
+    publicDir: join(dataDir, 'public'),
     dataKey: Buffer.from(dataKey, 'hex'),
     demoMode: env.DEMO_MODE === 'true',
     adminPhones: (env.ADMIN_PHONES ?? '').split(',').map((p) => p.trim()).filter(Boolean),

@@ -16,20 +16,9 @@ import memberRoutes from './routes/member.js';
 import donationRoutes from './routes/donations.js';
 import adminRoutes from './routes/admin.js';
 import rewardRoutes from './routes/rewards.js';
+import manageRoutes from './routes/manage.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-
-/** Only http(s) image hosts from trust.json are added to the CSP. */
-function trustImageHosts(trust) {
-  const hosts = new Set();
-  for (const b of trust.badges ?? []) {
-    try {
-      const u = new URL(b.image);
-      if (u.protocol === 'https:') hosts.add(u.origin);
-    } catch {}
-  }
-  return [...hosts];
-}
 
 export async function buildApp(options = {}) {
   const config = options.config ?? loadConfig();
@@ -58,7 +47,8 @@ export async function buildApp(options = {}) {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self'",
-    `img-src 'self' data: blob: ${trustImageHosts(trust).join(' ')}`.trim(),
+    // https: lets trust badges load from their issuers (e.g. enamad.ir); images cannot run code.
+    "img-src 'self' data: blob: https:",
     "font-src 'self'",
     "connect-src 'self'",
     "object-src 'none'",
@@ -121,6 +111,7 @@ export async function buildApp(options = {}) {
   await app.register(donationRoutes, ctx);
   await app.register(adminRoutes, ctx);
   await app.register(rewardRoutes, ctx);
+  await app.register(manageRoutes, ctx);
 
   await app.register(fastifyStatic, {
     root: join(ROOT, 'public'),

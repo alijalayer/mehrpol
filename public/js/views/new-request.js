@@ -85,6 +85,22 @@ export async function newRequestView(page) {
 
   const fullName = h('input', { class: 'input', maxlength: 80, autocomplete: 'name' });
   const nationalCode = h('input', { class: 'input mono', inputmode: 'numeric', dir: 'ltr', maxlength: 10 });
+  // Documents are picked here and uploaded (encrypted) right after the request is created.
+  const files = [];
+  const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,application/pdf', multiple: true, class: 'sr-only', id: 'new-docs' });
+  const fileList = h('ul', { class: 'file-list' });
+  const drawFiles = () => fileList.replaceChildren(...files.map((f, i) => h('li', {}, icon(f.type === 'application/pdf' ? 'file' : 'image'),
+    h('span', { class: 'name' }, f.name), h('span', { class: 'muted small' }, `${(f.size / 1048576).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت`),
+    h('button', { type: 'button', 'aria-label': 'حذف', onclick: () => { files.splice(i, 1); drawFiles(); } }, icon('x')))));
+  fileInput.onchange = () => {
+    for (const f of fileInput.files) {
+      if (f.size > 5 * 1024 * 1024) toast(`«${f.name}» بیش از ۵ مگابایت است`, 'error');
+      else if (files.length >= 6) toast('حداکثر ۶ فایل', 'error');
+      else files.push(f);
+    }
+    fileInput.value = '';
+    drawFiles();
+  };
   const consent = h('input', { type: 'checkbox', id: 'consent' });
   const submit = h('button', { type: 'submit', class: 'btn btn-primary btn-block btn-lg' }, 'ثبت درخواست');
 
@@ -95,6 +111,10 @@ export async function newRequestView(page) {
     state.user.hasIdentity ? null : h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, '۳'), 'احراز هویت'),
       h('p', { class: 'muted small' }, icon('lock'), 'این اطلاعات رمزنگاری می‌شود و فقط کارشناس بررسی آن را می‌بیند.'),
       h('div', { class: 'two-col' }, field('نام و نام خانوادگی', fullName), field('کد ملی', nationalCode))),
+    h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, state.user.hasIdentity ? '۳' : '۴'), 'مدارک'),
+      h('p', { class: 'muted small' }, icon('lock'), ' عکس قبض، کارت ملی، نامهٔ بانک، قرارداد اجاره یا نسخهٔ پزشک. رمزنگاری می‌شود و فقط کارشناس می‌بیند.'),
+      fileInput, h('label', { class: 'dropzone', for: 'new-docs' }, icon('upload'), h('strong', {}, 'انتخاب فایل'),
+        h('span', { class: 'muted small' }, 'تصویر یا PDF · حداکثر ۶ فایل، هر کدام ۵ مگابایت')), fileList),
     h('label', { class: 'check' }, consent, 'تأیید می‌کنم اطلاعات واقعی است و می‌دانم ثبت اطلاعات نادرست پیگرد قانونی دارد.'),
     submit);
 
@@ -112,7 +132,15 @@ export async function newRequestView(page) {
     try {
       const c = await api.post('/api/my/cases', body);
       state.user.hasIdentity = true;
-      toast('درخواست ثبت شد. حالا مدارک را بارگذاری کنید.', 'success');
+      let failed = 0;
+      for (const [i, f] of files.entries()) {
+        toast(`در حال بارگذاری مدرک ${(i + 1).toLocaleString('fa-IR')} از ${files.length.toLocaleString('fa-IR')}…`);
+        const fd = new FormData();
+        fd.append('file', f);
+        await api.post(`/api/my/cases/${c.id}/documents`, fd).catch(() => failed++);
+      }
+      if (failed) toast(`درخواست ثبت شد؛ ${failed.toLocaleString('fa-IR')} فایل بارگذاری نشد. از همین صفحه دوباره امتحان کنید.`, 'error');
+      else toast(files.length ? 'درخواست و مدارک ثبت شد.' : 'درخواست ثبت شد. حالا مدارک را بارگذاری کنید.', 'success');
       navigate(`/request/${c.id}`);
     } catch (err) {
       toast(err.message, 'error');
