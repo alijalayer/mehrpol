@@ -77,13 +77,54 @@ document.addEventListener('pointerdown', (e) => {
 });
 
 /* Watch each page as it renders */
+/* Sideways tab bars: the mouse wheel and a drag move them, and the active tab is kept in view */
+const scrollable = (el) => el && el.scrollWidth > el.clientWidth + 2;
+document.addEventListener('wheel', (e) => {
+  const bar = e.target.closest?.('.segmented.scroll, .chips');
+  if (!scrollable(bar) || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  bar.scrollLeft -= e.deltaY; // right-to-left: wheel down moves toward the later tabs
+}, { passive: false });
+
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  const bar = e.target.closest?.('.segmented.scroll, .chips');
+  if (e.pointerType !== 'mouse' || !scrollable(bar)) return;
+  drag = { bar, x: e.clientX, left: bar.scrollLeft, moved: false };
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 4) drag.moved = true;
+  drag.bar.style.scrollBehavior = 'auto';
+  drag.bar.scrollLeft = drag.left - dx;
+});
+document.addEventListener('pointerup', () => {
+  if (drag) drag.bar.style.removeProperty('scroll-behavior');
+  // A drag should not also count as a click on the tab under the pointer.
+  if (drag?.moved) document.addEventListener('click', (ev) => ev.preventDefault(), { capture: true, once: true });
+  drag = null;
+});
+
+function revealActiveTabs(root) {
+  for (const bar of root.querySelectorAll('.segmented.scroll, .chips')) {
+    const active = bar.querySelector('.active');
+    if (active && scrollable(bar) && !bar.dataset.revealed) {
+      bar.dataset.revealed = '1';
+      active.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
+  }
+}
+
 let queued = false;
 const scan = () => {
   if (queued) return;
   queued = true;
   requestAnimationFrame(() => {
     queued = false;
-    watch(document.getElementById('app') ?? document.body);
+    const root = document.getElementById('app') ?? document.body;
+    watch(root);
+    revealActiveTabs(root);
   });
 };
 new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });

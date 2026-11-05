@@ -51,6 +51,10 @@ export function loadConfig(overrides = {}) {
     adminPhones: (env.ADMIN_PHONES ?? '').split(',').map((p) => p.trim()).filter(Boolean),
     // Demo mode only: admins must also enter this key before their login code is shown on screen.
     adminLoginKey: env.ADMIN_LOGIN_KEY ?? '',
+    // Automated tests only: lets the test gateway run outside demo mode.
+    allowTestPayments: env.ALLOW_TEST_PAYMENTS === 'true' && env.NODE_ENV !== 'production',
+    // phone | email | both. The panel's mode switch overrides this.
+    loginChannel: ['phone', 'email', 'both'].includes(env.LOGIN_CHANNEL) ? env.LOGIN_CHANNEL : undefined,
     trustProxy: env.TRUST_PROXY === 'true',
     sms: { provider: env.SMS_PROVIDER ?? 'console', apiKey: env.SMS_API_KEY ?? '', template: env.SMS_TEMPLATE ?? '' },
     payment: {

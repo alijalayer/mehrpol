@@ -20,9 +20,14 @@ export async function latestRelease() {
   return latest;
 }
 
-/** The download link. Inside the app, the native side hands it to the system to download and install. */
+// Builds before 1.0.3 cannot download inside the app; a link to another site opens in the phone's browser.
+const RELEASES_PAGE = 'https://github.com/alijalayer/mehrpol/releases/latest';
+
+/** The download link. Inside the app, Android's download manager saves it and opens the installer. */
 export function downloadButton(release, cls = 'btn btn-primary') {
-  return h('a', { class: cls, href: release.url, download: `mehrpol-${release.version}.apk` }, icon('download'), `دریافت نسخهٔ ${fa(release.version)}`);
+  const old = installedVersion() === 0;
+  return h('a', { class: cls, href: old ? RELEASES_PAGE : release.url, ...(old ? { target: '_blank', rel: 'noopener' } : { download: `mehrpol-${release.version}.apk` }) },
+    icon('download'), `دریافت نسخهٔ ${fa(release.version)}`);
 }
 
 /** Banner shown inside the Android app when a newer version is published (dismissible per session). */

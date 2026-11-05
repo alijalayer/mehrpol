@@ -4,9 +4,12 @@ const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- A person signs in with a mobile number or an email address; at least one of them is set.
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  phone TEXT NOT NULL UNIQUE,
+  phone TEXT UNIQUE,
+  email TEXT UNIQUE,
+  phone_verified INTEGER NOT NULL DEFAULT 1,
   role TEXT NOT NULL CHECK (role IN ('member', 'admin')),
   display_name TEXT NOT NULL DEFAULT '',
   full_name_enc TEXT,
@@ -14,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at INTEGER NOT NULL
 );
 
+-- One-time codes, keyed by the phone or email they were sent to.
 CREATE TABLE IF NOT EXISTS otps (
   phone TEXT PRIMARY KEY,
   code_hash TEXT NOT NULL,
@@ -214,8 +218,38 @@ export function openDb(file) {
     const exists = db.prepare(`SELECT 1 FROM pragma_table_info('${table}') WHERE name = ?`).get(column);
     if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
   }
+  makePhoneOptional(db);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_slug ON users(slug) WHERE slug IS NOT NULL');
   return db;
+}
+
+/**
+ * Early databases required a phone for every user. Email sign-in needs it optional, and SQLite
+ * cannot relax NOT NULL in place, so the table is rebuilt once with the same rows.
+ */
+function makePhoneOptional(db) {
+  const phone = db.prepare("SELECT \"notnull\" AS required FROM pragma_table_info('users') WHERE name = 'phone'").get();
+  if (!phone?.required) return;
+  const keep = db.prepare("SELECT name FROM pragma_table_info('users')").all().map((c) => c.name).filter((n) => !['email', 'phone_verified'].includes(n));
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`CREATE TABLE users_new (
+      id TEXT PRIMARY KEY, phone TEXT UNIQUE, email TEXT UNIQUE, phone_verified INTEGER NOT NULL DEFAULT 1,
+      role TEXT NOT NULL CHECK (role IN ('member', 'admin')), display_name TEXT NOT NULL DEFAULT '',
+      full_name_enc TEXT, national_code_enc TEXT, created_at INTEGER NOT NULL,
+      public_profile INTEGER NOT NULL DEFAULT 0, slug TEXT, bio TEXT NOT NULL DEFAULT '', is_demo INTEGER NOT NULL DEFAULT 0,
+      last_login_at INTEGER, is_owner INTEGER NOT NULL DEFAULT 0)`);
+    db.exec(`INSERT INTO users_new (${keep.join(', ')}) SELECT ${keep.join(', ')} FROM users`);
+    db.exec('DROP TABLE users');
+    db.exec('ALTER TABLE users_new RENAME TO users');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 /** Runs fn inside a transaction (IMMEDIATE so concurrent writers serialize). */

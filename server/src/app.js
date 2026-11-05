@@ -4,12 +4,13 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
 import { ROOT, loadConfig, loadTrust } from './config.js';
-import { openDb } from './db.js';
+import { getSetting, openDb } from './db.js';
 import { HttpError, RateLimiter } from './guards.js';
 import { sha256 } from './security.js';
 import { createSmsProvider } from './providers/sms.js';
 import { createPaymentProvider } from './providers/payment.js';
 import { createBillPayProvider } from './providers/billpay.js';
+import { createMailer } from './providers/mail.js';
 import publicRoutes from './routes/public.js';
 import authRoutes from './routes/auth.js';
 import memberRoutes from './routes/member.js';
@@ -33,6 +34,13 @@ export async function buildApp(options = {}) {
   // Founding senior managers (ADMIN_PHONES) get their role even before their next sign-in.
   for (const phone of config.adminPhones) db.prepare("UPDATE users SET role = 'admin', is_owner = 1 WHERE phone = ?").run(phone);
   const trust = loadTrust();
+  // Demo/real mode and the sign-in channel are switched by a senior manager in the panel.
+  const mode = getSetting(db, 'mode', null);
+  if (mode) {
+    config.demoMode = !mode.live;
+    config.loginChannel = mode.channel;
+  }
+  config.loginChannel ??= 'phone';
   const ctx = {
     config,
     db,
@@ -43,6 +51,7 @@ export async function buildApp(options = {}) {
     billPay: createBillPayProvider(config),
     cookieName: config.production ? '__Host-sid' : 'sid',
   };
+  ctx.mail = options.mailer ?? createMailer(ctx);
   app.decorate('ctx', ctx);
   app.addHook('onClose', async () => db.close());
 
@@ -93,7 +102,7 @@ export async function buildApp(options = {}) {
     const token = req.cookies?.[ctx.cookieName];
     if (!token) return;
     const row = db.prepare(`
-      SELECT u.id, u.phone, u.role, u.is_owner, u.display_name, u.full_name_enc IS NOT NULL AS has_identity
+      SELECT u.id, u.phone, u.email, u.role, u.is_owner, u.display_name, u.full_name_enc IS NOT NULL AS has_identity
       FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.expires_at > ?`).get(sha256(token), Date.now());
     if (row) req.user = row;
