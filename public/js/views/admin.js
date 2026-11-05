@@ -1,6 +1,6 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate } from '../app.js';
-import { CATEGORY_ICONS, busy, emptyState, fa, faDate, faDateTime, field, h, icon, moneyInput, relTime, toAscii, toast, toman } from '../ui.js';
+import { CATEGORY_ICONS, busy, confirmBox, emptyState, fa, faDate, faDateTime, field, h, icon, moneyInput, relTime, toAscii, toast, toman } from '../ui.js';
 import { STATUS, statusPill } from './account.js';
 
 const TABS = {
@@ -490,7 +490,7 @@ async function team(body) {
     };
     const remove = h('button', { class: 'btn btn-sm btn-danger-ghost' }, icon('x'), 'برداشتن دسترسی');
     remove.onclick = busy(remove, async () => {
-      if (!confirm(`دسترسی مدیریت ${m.phone} برداشته شود؟`)) return;
+      if (!(await confirmBox(`دسترسی مدیریت ${m.phone} برداشته شود؟`, { ok: 'بله، برداشته شود', danger: true }))) return;
       try {
         await api.del(`/api/admin/team/${m.id}`);
         toast('دسترسی برداشته شد');
@@ -713,8 +713,11 @@ async function settings(body) {
         host: host.value.trim(), port: Number(toAscii(port.value)) || 465, secure: secure.checked, user: user.value.trim(),
         password: password.value, fromName: fromName.value, fromAddress: fromAddress.value.trim(), notify: notify.checked,
       });
+      if (password.value || m.hasPassword) s.ready.mailSaved = true;
+      s.ready.mailTested = false;
       password.value = '';
       toast('ذخیره شد؛ حالا ایمیل آزمایشی بفرستید', 'success');
+      drawChecklist();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -723,8 +726,10 @@ async function settings(body) {
   const test = h('button', { class: 'btn' }, icon('upload'), 'ارسال ایمیل آزمایشی');
   test.onclick = busy(test, async () => {
     try {
-      const r = await api.post('/api/admin/settings/mail/test', { to: testTo.value.trim() });
-      toast(`ایمیل آزمایشی به ${r.to} رفت؛ صندوق و Spam را ببینید`, 'success');
+      const sent = await api.post('/api/admin/settings/mail/test', { to: testTo.value.trim() });
+      toast(`ایمیل آزمایشی به ${sent.to} رفت؛ صندوق و Spam را ببینید`, 'success');
+      s.ready.mailTested = true;
+      drawChecklist();
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -733,15 +738,40 @@ async function settings(body) {
   // 2. Real mode
   const channel = h('select', { class: 'input' }, Object.entries(CHANNELS).map(([k, label]) => h('option', { value: k, selected: s.mode.channel === k }, label)));
   const live = s.mode.live;
+  const r = s.ready;
+  const checklist = h('ul', { class: 'readiness' });
+  const problem = h('div', { class: 'alert alert-danger', hidden: true });
   const toggle = h('button', { class: `btn ${live ? 'btn-danger-ghost' : 'btn-primary'}` }, icon(live ? 'eye' : 'check'), live ? 'برگشت به حالت نمایشی' : 'روشن کردن حالت واقعی');
+  const item = (ok, text, fix) => h('li', { class: ok ? 'ok' : 'todo' }, icon(ok ? 'check' : 'x'), h('span', {}, text, !ok && fix ? [' — ', fix] : ''));
+  const drawChecklist = () => {
+    const c = channel.value;
+    const rows = [];
+    if (c !== 'phone') {
+      rows.push(item(r.mailSaved, 'تنظیمات ایمیل (همراه رمز) ذخیره شده', 'در مرحلهٔ ۱ پر و ذخیره کنید'));
+      rows.push(item(r.mailTested, 'یک ایمیل آزمایشی با موفقیت رفته', 'در مرحلهٔ ۱ «ارسال ایمیل آزمایشی» را بزنید'));
+    }
+    if (c === 'email') rows.push(item(Boolean(r.ownerEmail), 'ایمیل خودتان به حسابتان وصل است', h('a', { href: '#/me?tab=settings' }, 'وصل کردن ایمیل')));
+    if (c !== 'email') rows.push(item(r.smsReady, 'پنل پیامک وصل است', 'فعلاً «فقط با ایمیل» را انتخاب کنید'));
+    checklist.replaceChildren(...rows);
+    const ready = rows.every((li) => li.classList.contains('ok'));
+    toggle.disabled = !live && !ready;
+    toggle.title = toggle.disabled ? 'اول موارد قرمز بالا را کامل کنید' : '';
+  };
+  channel.onchange = drawChecklist;
+  // Without an SMS panel, email is the only way in; start from it.
+  if (!live && !r.smsReady) channel.value = 'email';
+  drawChecklist();
   toggle.onclick = busy(toggle, async () => {
     const goLive = !live;
-    if (goLive && !confirm('حالت واقعی روشن شود؟ کد ورود دیگر روی صفحه نمایش داده نمی‌شود و نوار «نسخهٔ نمایشی» برداشته می‌شود.')) return;
+    problem.hidden = true;
+    if (goLive && !(await confirmBox('حالت واقعی روشن شود؟ کد ورود دیگر روی صفحه نمایش داده نمی‌شود و نوار «نسخهٔ نمایشی» برداشته می‌شود.', { ok: 'بله، روشن شود' }))) return;
     try {
       await api.put('/api/admin/settings/mode', { live: goLive, channel: channel.value });
       toast(goLive ? 'حالت واقعی روشن شد' : 'به حالت نمایشی برگشت', 'success');
       setTimeout(() => location.reload(), 600);
     } catch (err) {
+      problem.replaceChildren(icon('x'), h('span', {}, err.message));
+      problem.hidden = false;
       toast(err.message, 'error');
     }
   });
@@ -758,7 +788,7 @@ async function settings(body) {
   // 3. Sample data
   const clear = h('button', { class: 'btn btn-danger-ghost' }, icon('x'), 'حذف داده‌های نمونه');
   clear.onclick = busy(clear, async () => {
-    if (!confirm(`${fa(s.demoRows.cases)} پرونده و ${fa(s.demoRows.users)} خیّر نمونه برای همیشه حذف شوند؟ دادهٔ واقعی دست نمی‌خورد.`)) return;
+    if (!(await confirmBox(`${fa(s.demoRows.cases)} پرونده و ${fa(s.demoRows.users)} خیّر نمونه برای همیشه حذف شوند؟ دادهٔ واقعی دست نمی‌خورد.`, { ok: 'بله، حذف شوند', danger: true }))) return;
     try {
       const r = await api.post('/api/admin/settings/clear-demo');
       toast(`${fa(r.cases)} پرونده و ${fa(r.users)} کاربر نمونه حذف شد`, 'success');
@@ -791,6 +821,8 @@ async function settings(body) {
       state.user.email ? null : h('a', { class: 'btn', href: '#/me?tab=settings' }, icon('user'), 'رفتن به تنظیمات حساب')),
     h('section', { class: 'card' }, h('h2', {}, step(3, live), ' حالت واقعی'),
       field('کاربران چطور وارد شوند؟', channel, 'تا پنل پیامک وصل نشده، «فقط با ایمیل» را انتخاب کنید.'),
+      live ? null : [h('p', { class: 'label' }, 'پیش از روشن کردن:'), checklist],
+      problem,
       h('div', { class: 'row-gap' }, toggle, live ? saveChannel : null)),
     h('section', { class: 'card' }, h('h2', {}, icon('x'), 'داده‌های نمونه'),
       s.demoRows.cases || s.demoRows.users

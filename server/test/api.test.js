@@ -479,6 +479,15 @@ describe('real mode with email sign-in', () => {
     assert.equal(link.statusCode, 200, link.body);
     const ok = await live.inject({ method: 'POST', url: '/api/my/email/verify', headers: owner, payload: { email: 'owner@example.com', code: codeFrom('owner@example.com') } });
     assert.equal(ok.json().email, 'owner@example.com');
+    const mail = await live.inject({ method: 'PUT', url: '/api/admin/settings/mail', headers: owner, payload: { host: 'smtp.example.com', port: 465, user: 'owner@example.com', password: 'app-password', fromAddress: 'owner@example.com' } });
+    assert.equal(mail.statusCode, 200, mail.body);
+    const untested = await live.inject({ method: 'PUT', url: '/api/admin/settings/mode', headers: owner, payload: { live: true, channel: 'email' } });
+    assert.equal(untested.statusCode, 409, 'a test email must succeed first');
+    let s0 = (await live.inject({ method: 'GET', url: '/api/admin/settings', headers: owner })).json();
+    assert.deepEqual([s0.ready.mailSaved, s0.ready.mailTested, s0.ready.ownerEmail], [true, false, 'owner@example.com']);
+    assert.equal((await live.inject({ method: 'POST', url: '/api/admin/settings/mail/test', headers: owner, payload: {} })).statusCode, 200);
+    s0 = (await live.inject({ method: 'GET', url: '/api/admin/settings', headers: owner })).json();
+    assert.equal(s0.ready.mailTested, true);
     const on = await live.inject({ method: 'PUT', url: '/api/admin/settings/mode', headers: owner, payload: { live: true, channel: 'email' } });
     assert.equal(on.statusCode, 200, on.body);
     assert.equal((await live.inject({ method: 'GET', url: '/api/meta' })).json().loginChannel, 'email');

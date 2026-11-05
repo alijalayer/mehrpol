@@ -2,7 +2,7 @@
 // the monthly circle, sponsored campaigns and partnership plans for companies and charities.
 import { api, state } from '../api.js';
 import { navigate } from '../app.js';
-import { CATEGORY_ICONS, busy, emptyState, fa, faDate, field, h, icon, moneyInput, progress, toAscii, toast, toman } from '../ui.js';
+import { CATEGORY_ICONS, busy, confirmBox, emptyState, fa, faDate, field, h, icon, moneyInput, progress, toAscii, toast, toman } from '../ui.js';
 
 let configPromise;
 export const revenueConfig = () => (configPromise ??= api.get('/api/revenue/config'));
@@ -162,7 +162,7 @@ export async function circleView(page) {
   if (m) {
     const cancel = h('button', { class: 'btn btn-sm btn-danger-ghost' }, 'لغو عضویت');
     cancel.onclick = busy(cancel, async () => {
-      if (!confirm('عضویت حلقهٔ مهر لغو شود؟ تا پایان دورهٔ پرداخت‌شده فعال می‌ماند.')) return;
+      if (!(await confirmBox('عضویت حلقهٔ مهر لغو شود؟ تا پایان دورهٔ پرداخت‌شده فعال می‌ماند.', { ok: 'بله، لغو شود', danger: true }))) return;
       await api.post('/api/circle/cancel');
       toast('عضویت لغو شد');
       navigate('/circle?u=' + Date.now());

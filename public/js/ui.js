@@ -147,6 +147,32 @@ export function skeletonCards(n = 3) {
   return h('div', { class: 'grid' }, Array.from({ length: n }, () => h('div', { class: 'card skeleton' })));
 }
 
+/**
+ * An on-page "are you sure?" box. The browser's own confirm() is silently blocked in some
+ * in-app browsers and Android web views, which made buttons appear to do nothing.
+ */
+export function confirmBox(message, { ok = 'بله، انجام شود', cancel = 'انصراف', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const yes = h('button', { class: `btn ${danger ? 'btn-danger' : 'btn-primary'}` }, ok);
+    const no = h('button', { class: 'btn btn-ghost' }, cancel);
+    const box = h('div', { class: 'confirm-backdrop', role: 'presentation' },
+      h('div', { class: 'confirm-box card', role: 'alertdialog', 'aria-modal': 'true' },
+        h('p', {}, message), h('div', { class: 'row-gap' }, yes, no)));
+    const done = (answer) => {
+      box.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(answer);
+    };
+    const onKey = (e) => e.key === 'Escape' && done(false);
+    yes.onclick = () => done(true);
+    no.onclick = () => done(false);
+    box.onclick = (e) => e.target === box && done(false);
+    document.addEventListener('keydown', onKey);
+    document.body.append(box);
+    yes.focus();
+  });
+}
+
 export function busy(button, fn) {
   return async (...args) => {
     if (button.disabled) return;

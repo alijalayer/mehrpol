@@ -74,6 +74,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+/* Elements hidden from script stay hidden even when a class gives them display: flex or grid. */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -748,3 +750,19 @@ h2 .num.done { background: var(--success); }
 hr.sep { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
 
 .app-icon { border-radius: 22px; box-shadow: var(--shadow-lg); margin-bottom: .5rem; }
+
+/* On-page confirmation (replaces the browser's confirm(), which some web views block) */
+.confirm-backdrop { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 1rem; background: color-mix(in srgb, #000 45%, transparent); animation: rise .18s ease-out; }
+.confirm-box { max-width: 420px; width: 100%; margin: 0; box-shadow: var(--shadow-lg); }
+.confirm-box p { font-size: 1rem; line-height: 1.9; }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
+
+/* What real mode still needs */
+.readiness { list-style: none; padding: 0; margin: .3rem 0 1rem; display: grid; gap: .4rem; }
+.readiness li { display: flex; gap: .5rem; align-items: flex-start; padding: .5rem .75rem; border-radius: 10px; font-size: .9rem; }
+.readiness li .icon { margin-top: .3rem; }
+.readiness li.ok { background: var(--success-soft); color: var(--success); }
+.readiness li.todo { background: var(--danger-soft); color: var(--danger); }
+.readiness li a { font-weight: 800; }
+.btn:disabled:not(.loading) { cursor: not-allowed; }

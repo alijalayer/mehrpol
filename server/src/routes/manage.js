@@ -231,9 +231,20 @@ export default async function manageRoutes(app, ctx) {
     };
   };
 
-  app.get('/api/admin/settings', async (req) => {
-    requireOwner(req);
+  const readiness = (owner) => {
+    const m = getSetting(db, 'mail', null) ?? {};
     return {
+      mailSaved: ctx.mail.configured() && Boolean(m.passEnc),
+      mailTested: Boolean(m.testedAt),
+      ownerEmail: owner.email ?? null,
+      smsReady: ctx.sms.name !== 'console',
+    };
+  };
+
+  app.get('/api/admin/settings', async (req) => {
+    const owner = requireOwner(req);
+    return {
+      ready: readiness(owner),
       mail: mailView(),
       mode: { live: !config.demoMode, channel: config.loginChannel },
       sms: ctx.sms.name,
@@ -266,6 +277,7 @@ export default async function manageRoutes(app, ctx) {
     setSetting(db, 'mail', {
       host, port: b.port, secure: b.secure, user: cleanText(b.user, 120), fromName: cleanText(b.fromName, 60) || 'مهرپل', fromAddress, notify: b.notify,
       passEnc: b.password ? encryptText(config.dataKey, b.password) : previous?.passEnc ?? null,
+      testedAt: null,
     });
     audit(db, owner.id, 'admin.settings.mail');
     return mailView();
@@ -280,6 +292,7 @@ export default async function manageRoutes(app, ctx) {
     } catch (err) {
       throw err instanceof HttpError ? err : new HttpError(502, `ارسال نشد: ${String(err.message).slice(0, 160)}`);
     }
+    setSetting(db, 'mail', { ...getSetting(db, 'mail', {}), testedAt: Date.now() });
     return { ok: true, to };
   });
 
@@ -290,7 +303,8 @@ export default async function manageRoutes(app, ctx) {
     const owner = requireOwner(req);
     const { live, channel } = req.body;
     if (live) {
-      if (channel !== 'phone' && !ctx.mail.configured()) throw new HttpError(409, 'اول تنظیمات ایمیل را کامل کنید و ایمیل آزمایشی را امتحان کنید');
+      if (channel !== 'phone' && !readiness(owner).mailSaved) throw new HttpError(409, 'اول تنظیمات ایمیل (همراه رمز) را ذخیره کنید');
+      if (channel !== 'phone' && !readiness(owner).mailTested) throw new HttpError(409, 'اول یک ایمیل آزمایشی موفق بفرستید تا مطمئن شویم ایمیل‌ها می‌رسند');
       if (channel !== 'email' && ctx.sms.name === 'console') throw new HttpError(409, 'برای ورود با پیامک، اول پنل پیامک باید وصل شود؛ فعلاً «ورود با ایمیل» را انتخاب کنید');
       if (channel === 'email' && !owner.email) throw new HttpError(409, 'اول ایمیل خودتان را در «حساب من ← تنظیمات» وصل کنید، وگرنه بعد از این تغییر نمی‌توانید وارد شوید');
     }

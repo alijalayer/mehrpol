@@ -1,6 +1,6 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate, renderHeader } from '../app.js';
-import { CATEGORY_ICONS, busy, emptyState, fa, faDate, field, h, icon, progress, relTime, toast, toman, tomanShort } from '../ui.js';
+import { CATEGORY_ICONS, busy, confirmBox, emptyState, fa, faDate, field, h, icon, progress, relTime, toast, toman, tomanShort } from '../ui.js';
 import { avatar, levelBadge, levelProgress, medal } from '../rewards-ui.js';
 import { downloadButton, faVersion, installedVersion, latestRelease } from '../update.js';
 
@@ -235,7 +235,7 @@ export async function myCaseView(page, id) {
   if (c.status === 'pending') {
     const del = h('button', { class: 'btn btn-danger-ghost btn-block' }, icon('x'), 'انصراف و حذف درخواست');
     del.onclick = busy(del, async () => {
-      if (!confirm('این درخواست و مدارکش حذف شود؟')) return;
+      if (!(await confirmBox('این درخواست و مدارکش حذف شود؟', { ok: 'بله، حذف شود', danger: true }))) return;
       try {
         await api.del(`/api/my/cases/${c.id}`);
         toast('درخواست حذف شد');
