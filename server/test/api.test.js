@@ -410,3 +410,28 @@ describe('revenue and management team', () => {
     assert.equal(leads.items[0].org, 'شرکت نمونه');
   });
 });
+
+describe('demo mode keeps the admin panel locked', () => {
+  let demo;
+  const dir = mkdtempSync(join(tmpdir(), 'mehrpol-demo-'));
+  before(async () => {
+    const config = loadConfig({ skipDotEnv: true, dataDir: dir, env: { NODE_ENV: 'test', DEMO_MODE: 'true', ADMIN_PHONES: '09120000001', ADMIN_LOGIN_KEY: 'k-7f3a91', PUBLIC_URL: 'http://localhost:3000' } });
+    demo = await buildApp({ config, logger: false, sms: { name: 'test', sendOtp: async () => {} } });
+  });
+  after(async () => {
+    await demo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('members see their code; admins need the manager key first', async () => {
+    const member = await demo.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09125550000' } });
+    assert.ok(member.json().demoCode);
+    const noKey = await demo.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09120000001' } });
+    assert.equal(noKey.statusCode, 403);
+    assert.equal(noKey.json().needsAdminKey, true);
+    const wrong = await demo.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09120000001', adminKey: 'guess' } });
+    assert.equal(wrong.statusCode, 403);
+    const right = await demo.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09120000001', adminKey: 'k-7f3a91' } });
+    assert.ok(right.json().demoCode);
+  });
+});

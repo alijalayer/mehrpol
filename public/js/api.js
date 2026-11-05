@@ -1,7 +1,8 @@
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, data = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -19,7 +20,7 @@ async function request(method, url, body) {
     throw new ApiError(0, 'اتصال اینترنت برقرار نیست');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error ?? 'خطایی رخ داد');
+  if (!res.ok) throw new ApiError(res.status, data.error ?? 'خطایی رخ داد', data);
   return data;
 }
 

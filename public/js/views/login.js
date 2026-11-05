@@ -13,16 +13,24 @@ export async function loginView(page) {
   const phoneStep = () => {
     const phone = h('input', { class: 'input', type: 'tel', inputmode: 'numeric', autocomplete: 'tel', dir: 'ltr', placeholder: '09xx xxx xxxx', maxlength: 14, required: true });
     const btn = h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'دریافت کد تأیید');
-    const form = h('form', {}, field('شماره موبایل', phone, 'کد تأیید ۶ رقمی برایتان پیامک می‌شود.'), btn);
+    // Shown only when the server says this number belongs to a manager (demo mode).
+    const adminKey = h('input', { class: 'input', type: 'password', autocomplete: 'off', dir: 'ltr' });
+    const keyField = field('کلید مدیریت', adminKey, 'این شماره مدیر است. کلیدی را که برای مدیران تعیین شده وارد کنید.');
+    keyField.hidden = true;
+    const form = h('form', {}, field('شماره موبایل', phone, 'کد تأیید ۶ رقمی برایتان پیامک می‌شود.'), keyField, btn);
     form.onsubmit = (e) => {
       e.preventDefault();
       send();
     };
     const send = busy(btn, async () => {
       try {
-        const res = await api.post('/api/auth/otp', { phone: toAscii(phone.value) });
+        const res = await api.post('/api/auth/otp', { phone: toAscii(phone.value), ...(keyField.hidden ? {} : { adminKey: adminKey.value }) });
         codeStep(toAscii(phone.value), res);
       } catch (err) {
+        if (err.data?.needsAdminKey) {
+          keyField.hidden = false;
+          adminKey.focus();
+        }
         toast(err.message, 'error');
       }
     });
