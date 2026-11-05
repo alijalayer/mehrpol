@@ -1,0 +1,25 @@
+{
+  "appId": "ir.mehrpol.app",
+  "appName": "مهرپل",
+  "webDir": "mobile/www",
+  "server": {
+    "url": "https://mehrpol.example.ir",
+    "errorPath": "index.html",
+    "allowNavigation": ["payment.zarinpal.com", "sandbox.zarinpal.com", "*.shaparak.ir"]
+  },
+  "android": {
+    "backgroundColor": "#fbf6ee"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#fbf6ee",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "backgroundColor": "#0f6e5c",
+      "style": "DARK",
+      "overlaysWebView": false
+    }
+  }
+}

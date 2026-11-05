@@ -8,6 +8,8 @@ import { newRequestView } from './views/new-request.js';
 import { receiptView } from './views/receipt.js';
 import { ledgerView, trustView } from './views/trust.js';
 import { adminView, adminCaseView } from './views/admin.js';
+import { certificateView, donorView, honorView } from './views/honor.js';
+import { profileMenu } from './rewards-ui.js';
 
 const routes = [
   [/^\/$/, homeView, 'home'],
@@ -20,6 +22,9 @@ const routes = [
   [/^\/receipt\/([\w-]{36})$/, receiptView, 'me', { auth: true }],
   [/^\/ledger$/, ledgerView, 'trust'],
   [/^\/trust$/, trustView, 'trust'],
+  [/^\/honor$/, honorView, 'honor'],
+  [/^\/donor\/([a-z0-9]{8})$/, donorView, 'honor'],
+  [/^\/(certificate|verify)\/(MP[A-Z0-9]{10})$/, certificateView, 'me'],
   [/^\/admin$/, adminView, 'me', { admin: true }],
   [/^\/admin\/case\/([\w-]{36})$/, adminCaseView, 'me', { admin: true }],
 ];
@@ -47,6 +52,7 @@ async function render() {
 
   for (const a of document.querySelectorAll('[data-tab]')) a.classList.toggle('active', a.dataset.tab === tab);
   const params = path.match(re).slice(1);
+  document.body.dataset.route = path.split('/')[1] || 'home';
   const page = h('div', { class: 'page' });
   main.replaceChildren(page);
   window.scrollTo({ top: 0 });
@@ -66,10 +72,15 @@ export function renderHeader() {
     slot.replaceChildren(h('a', { class: 'btn btn-sm', href: '#/login' }, 'ورود / ثبت‌نام'));
     return;
   }
-  slot.replaceChildren(
-    state.user.role === 'admin' ? h('a', { class: 'btn btn-sm btn-ghost', href: '#/admin' }, icon('shield'), 'پنل بررسی') : null,
-    h('a', { class: 'avatar', href: '#/me', 'aria-label': 'حساب من' }, icon('user')),
-  );
+  const logout = async () => {
+    await api.post('/api/auth/logout');
+    state.user = null;
+    renderHeader();
+    navigate('/');
+  };
+  // replaceChildren would print a null as text, so only real nodes are passed.
+  const adminLink = state.user.role === 'admin' ? [h('a', { class: 'btn btn-sm btn-ghost hide-sm', href: '#/admin' }, icon('shield'), 'پنل بررسی')] : [];
+  slot.replaceChildren(...adminLink, profileMenu(logout));
 }
 
 function shell() {
@@ -81,14 +92,15 @@ function shell() {
     ['new', '#/new', 'plus', 'درخواست کمک'],
     ['trust', '#/trust', 'shield', 'شفافیت'],
     ['me', '#/me', 'user', 'حساب من'],
+    ['honor', '#/honor', 'trophy', 'تالار افتخار'],
   ];
   document.getElementById('app').replaceChildren(
     state.meta.demoMode
       ? h('div', { class: 'demo-banner', role: 'note' }, icon('eye'), 'نسخهٔ نمایشی: پرداخت‌ها آزمایشی و پرونده‌ها نمونه‌اند.')
-      : null,
+      : '',
     h('header', { class: 'topbar' },
       h('a', { class: 'brand', href: '#/' }, h('img', { src: '/icons/logo.svg', alt: '', width: 34, height: 34 }), h('span', {}, brand.name)),
-      h('nav', { class: 'topnav', 'aria-label': 'منوی اصلی' }, nav.slice(0, 4).map(([tab, href, , label]) => h('a', { href, dataset: { tab } }, label))),
+      h('nav', { class: 'topnav', 'aria-label': 'منوی اصلی' }, [...nav.slice(0, 4), nav[5]].map(([tab, href, , label]) => h('a', { href, dataset: { tab } }, label))),
       h('div', { id: 'header-actions', class: 'header-actions' })),
     h('main', { id: 'main', tabindex: '-1' }),
     h('footer', { class: 'footer' },
@@ -96,10 +108,11 @@ function shell() {
       h('div', { class: 'footer-links' },
         h('a', { href: '#/trust' }, 'مجوزها و نمادها'),
         h('a', { href: '#/ledger' }, 'دفتر پرداخت‌ها'),
+        h('a', { href: '#/honor' }, 'تالار افتخار'),
         h('a', { href: '#/trust' }, 'کد متن‌باز')),
       h('small', {}, 'اطلاعات هویتی متقاضیان رمزنگاری می‌شود و هرگز به خیّرین نمایش داده نمی‌شود.')),
     h('nav', { class: 'tabbar', 'aria-label': 'منوی پایین' },
-      nav.map(([tab, href, ic, label]) => h('a', { href, dataset: { tab } }, icon(ic), h('span', {}, label)))),
+      nav.slice(0, 5).map(([tab, href, ic, label]) => h('a', { href, dataset: { tab } }, icon(ic), h('span', {}, label)))),
   );
   renderHeader();
 }

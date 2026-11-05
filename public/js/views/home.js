@@ -1,6 +1,8 @@
 import { api, state } from '../api.js';
 import { CATEGORY_ICONS, fa, h, icon, toman } from '../ui.js';
 import { caseCard } from './cases.js';
+import { installCard } from '../install.js';
+import { medal } from '../rewards-ui.js';
 
 export async function homeView(page) {
   const { brand, categories } = state.meta;
@@ -20,6 +22,7 @@ export async function homeView(page) {
         h('div', { class: 'bill-card bill-1' }, icon('bolt'), h('div', {}, h('strong', {}, 'قبض برق'), h('small', {}, 'پرداخت شد')), icon('check', 'ok')),
         h('div', { class: 'bill-card bill-2' }, icon('flame'), h('div', {}, h('strong', {}, 'قبض گاز'), h('small', {}, '۶۸٪ تأمین شده'))),
         h('div', { class: 'bill-card bill-3' }, icon('bank'), h('div', {}, h('strong', {}, 'قسط وام'), h('small', {}, 'مستقیم به بانک'))))),
+    installCard() ?? '',
     statsRow,
     h('section', { class: 'section' },
       h('h2', {}, 'چطور کار می‌کند؟'),
@@ -35,6 +38,15 @@ export async function homeView(page) {
       h('h2', {}, 'به چه چیزی کمک کنم؟'),
       h('div', { class: 'cat-grid' }, Object.entries(categories).map(([key, c]) =>
         h('a', { class: `cat-tile cat-${key}`, href: `#/cases?cat=${key}` }, icon(CATEGORY_ICONS[key]), h('span', {}, c.label))))),
+    h('section', { class: 'section reward-teaser' },
+      h('div', { class: 'teaser-text' },
+        h('span', { class: 'eyebrow' }, icon('trophy'), 'دستاوردها'),
+        h('h2', {}, 'هر کمک، یک قدم تا مدال بعدی'),
+        h('p', { class: 'muted' }, 'از «حامی» تا «سفیر مهر» بالا بروید، مدال بگیرید، گواهی قدردانیِ قابل استعلام دریافت کنید و اگر خواستید نامتان در تالار افتخار بدرخشد.'),
+        h('div', { class: 'row-gap' }, h('a', { class: 'btn btn-primary', href: '#/honor' }, icon('trophy'), 'تالار افتخار'), h('a', { class: 'btn btn-ghost', href: state.user ? '#/me' : '#/login' }, 'دستاوردهای من'))),
+      h('div', { class: 'teaser-medals', 'aria-hidden': 'true' },
+        [['heart', 'نخستین گام', 'bronze'], ['check', 'گره‌گشا', 'silver'], ['map', 'سفیر ایران', 'gold'], ['users', 'صدتایی', 'diamond']]
+          .map(([ic, title, tier]) => medal({ icon: ic, title, tier, earned: true }, { size: 'md' })))),
     h('section', { class: 'section trust-strip' },
       trustItem('lock', 'رمزنگاری اطلاعات', 'نام، کد ملی و مدارک متقاضی با AES-256 رمزنگاری می‌شود.'),
       trustItem('eye', 'دفتر عمومی پرداخت‌ها', 'هر پرداخت با کد پیگیری در دفتر عمومی ثبت می‌شود.'),

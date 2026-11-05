@@ -1,6 +1,6 @@
 // Caches only the static app shell. API responses are never cached (they carry personal data).
-const CACHE = 'mehrpol-v1';
-const SHELL = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/ui.js', '/fonts/Vazirmatn.woff2', '/icons/logo.svg'];
+const CACHE = 'mehrpol-v2';
+const SHELL = ['/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/ui.js', '/fonts/Vazirmatn.woff2', '/icons/logo.svg', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(

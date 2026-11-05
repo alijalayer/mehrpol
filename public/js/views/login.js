@@ -64,7 +64,7 @@ export async function loginView(page) {
     });
     card.replaceChildren(h('div', { class: 'auth-icon' }, icon('lock')), h('h1', {}, 'کد تأیید'),
       h('p', { class: 'muted' }, 'کد ارسال‌شده به ', h('span', { dir: 'ltr' }, phone), ' را وارد کنید.'),
-      res.demoCode ? h('div', { class: 'demo-code' }, 'نسخهٔ نمایشی — کد شما: ', h('strong', { dir: 'ltr' }, res.demoCode)) : null,
+      res.demoCode ? h('div', { class: 'demo-code' }, 'نسخهٔ نمایشی — کد شما: ', h('strong', { dir: 'ltr' }, res.demoCode)) : '',
       form, h('div', { class: 'row-between' }, timer, h('button', { class: 'link', onclick: phoneStep }, 'تغییر شماره')));
     code.focus();
   };

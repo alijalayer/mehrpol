@@ -1,0 +1,15 @@
+{
+  "_help": "Perks unlocked at each donor level (supporter, bronze, silver, gold, diamond). active:false shows the perk as «به‌زودی» until you can actually deliver it. partner = sponsor or charity that provides it.",
+  "perks": [
+    { "level": "supporter", "title": "تاریخچه و رسید همهٔ کمک‌ها", "description": "رسید با کد پیگیری بانک برای هر کمک، همیشه در دسترس." },
+    { "level": "supporter", "title": "حضور در تالار افتخار", "description": "اگر بخواهید، نام نمایشی و نشان‌هایتان در تالار افتخار دیده می‌شود." },
+    { "level": "bronze", "title": "گواهی قابل استعلام مهرپل", "description": "گواهی چاپی با کد یکتا که هر کس می‌تواند درستی آن را روی سایت استعلام کند." },
+    { "level": "bronze", "title": "قاب ویژهٔ پروفایل", "description": "کارت پروفایل شما با رنگ و نشان سطح برنزی نمایش داده می‌شود." },
+    { "level": "silver", "title": "گزارش اثر قابل چاپ", "description": "خلاصهٔ اثر کمک‌های شما: تعداد خانواده‌ها، استان‌ها و دسته‌ها." },
+    { "level": "silver", "title": "دعوت به رویدادهای خیریه", "description": "دعوت به نشست‌ها و رویدادهای مؤسسهٔ همکار.", "partner": "", "active": false },
+    { "level": "gold", "title": "تقدیرنامهٔ رسمی مؤسسهٔ همکار", "description": "تقدیرنامهٔ امضاشده از طرف مدیریت مؤسسهٔ خیریهٔ همکار.", "partner": "", "active": false },
+    { "level": "gold", "title": "خدمات ویژه از حامیان مالی", "description": "تخفیف یا خدمات رایگان از کسب‌وکارهای حامی مهرپل.", "partner": "", "active": false },
+    { "level": "diamond", "title": "عضویت در شورای مشورتی خیّرین", "description": "مشارکت در تصمیم‌گیری دربارهٔ اولویت‌های کمک‌رسانی.", "partner": "", "active": false },
+    { "level": "diamond", "title": "معرفی در گزارش سالانه", "description": "با رضایت شما، معرفی به‌عنوان سفیر مهر در گزارش سالانه.", "partner": "", "active": false }
+  ]
+}

@@ -27,8 +27,9 @@ export function applyDonation(db, donationId, refId) {
         if (status === 'funded') funded = { ...c, raised, status };
       }
     }
-    db.prepare("UPDATE donations SET status = 'succeeded', applied = ?, ref_id = ?, verified_at = ? WHERE id = ?")
-      .run(applied, refId, Date.now(), d.id);
+    // closed_case marks the donation that completed a request (the «گره‌گشا» medal).
+    db.prepare("UPDATE donations SET status = 'succeeded', applied = ?, closed_case = ?, ref_id = ?, verified_at = ? WHERE id = ?")
+      .run(applied, funded ? 1 : 0, refId, Date.now(), d.id);
     audit(db, d.donor_id, 'donation.succeeded', d.case_id, { donation: d.id, amount: d.amount, applied });
     return { donation: db.prepare('SELECT * FROM donations WHERE id = ?').get(d.id), funded };
   });
