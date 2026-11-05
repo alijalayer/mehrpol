@@ -1,0 +1,47 @@
+{
+  "brand": {
+    "name": "مهرپل",
+    "tagline": "پلی میان دست‌های گشاده و نیازهای واقعی"
+  },
+  "organization": {
+    "name": "",
+    "registrationNo": "",
+    "address": "",
+    "phone": "",
+    "email": ""
+  },
+  "partnerCharity": {
+    "name": "",
+    "licenseNo": "",
+    "licenseIssuer": ""
+  },
+  "badges": [
+    {
+      "id": "enamad",
+      "title": "نماد اعتماد الکترونیکی",
+      "description": "پس از دریافت از enamad.ir، آدرس تصویر و لینک نماد را اینجا قرار دهید.",
+      "image": "",
+      "link": ""
+    },
+    {
+      "id": "samandehi",
+      "title": "نشان ساماندهی",
+      "description": "پس از ثبت در samandehi.ir، آدرس تصویر و لینک نشان را اینجا قرار دهید.",
+      "image": "",
+      "link": ""
+    },
+    {
+      "id": "charity",
+      "title": "مجوز فعالیت خیریه",
+      "description": "تصویر یا لینک استعلام مجوز مؤسسهٔ خیریهٔ همکار.",
+      "image": "",
+      "link": ""
+    }
+  ],
+  "documents": [
+    { "title": "مجوز جمع‌آوری کمک‌های مردمی", "number": "", "issuer": "", "link": "" },
+    { "title": "قرارداد همکاری با مؤسسهٔ خیریه", "number": "", "issuer": "", "link": "" },
+    { "title": "قرارداد درگاه پرداخت", "number": "", "issuer": "", "link": "" }
+  ],
+  "sourceCodeUrl": ""
+}

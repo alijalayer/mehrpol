@@ -1,0 +1,11 @@
+{
+  "name": "مهرپل — پرداخت قبض نیازمندان",
+  "short_name": "مهرپل",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f5f0",
+  "theme_color": "#0f6e5c",
+  "icons": [{ "src": "/icons/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

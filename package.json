@@ -1,0 +1,26 @@
+{
+  "name": "mehrpol",
+  "version": "0.1.0",
+  "description": "پلتفرم متن‌باز و شفاف پرداخت قبض و بدهی نیازمندان توسط خیّرین",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server/src/server.js",
+    "dev": "node --watch server/src/server.js",
+    "seed:demo": "node server/scripts/seed-demo.js",
+    "test": "node --test server/test/"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/multipart": "^10.1.7",
+    "@fastify/static": "^10.1.10",
+    "fastify": "^5.12.8"
+  },
+  "devDependencies": {
+    "vazirmatn": "^33.0.3"
+  }
+}
