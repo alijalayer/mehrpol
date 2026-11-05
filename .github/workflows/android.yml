@@ -11,8 +11,12 @@ on:
       version_name:
         description: 'Version shown to users'
         default: '1.0.0'
+      release:
+        description: 'Also publish the APK on the Releases page'
+        type: boolean
+        default: false
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
