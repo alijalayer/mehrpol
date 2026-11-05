@@ -320,3 +320,93 @@ describe('admin panel', () => {
     assert.equal(dl.rawPayload.length, apk.length);
   });
 });
+
+describe('revenue and management team', () => {
+  let owner;
+  let donor;
+  let caseCode;
+  const pay = async (res) => {
+    assert.equal(res.statusCode, 200, res.body);
+    const authority = new URL(res.json().redirectUrl).searchParams.get('authority');
+    const done = await app.inject({ method: 'POST', url: '/api/mock-gateway/complete', headers: H, payload: { authority, pay: true } });
+    await app.inject({ method: 'GET', url: done.json().redirect });
+    return { id: res.json().id, authority };
+  };
+  const revenue = async () => (await app.inject({ method: 'GET', url: '/api/admin/revenue', headers: owner })).json();
+
+  before(async () => {
+    owner = await login('09120000001');
+    donor = await login('09129999999');
+    const requester = await login('09128888888');
+    const bill = makeBill('2468024', 2, 2_000_000);
+    const c = await app.inject({ method: 'POST', url: '/api/my/cases', headers: requester, payload: {
+      category: 'electricity', title: 'قبض برق زمستان', story: 'توضیح کامل وضعیت خانواده برای بررسی کارشناس و خیّرین عزیز.', province: 'تهران',
+      billId: bill.billId, paymentId: bill.paymentId, fullName: 'نام دوم', nationalCode: '0499370899' } });
+    assert.equal(c.statusCode, 200, c.body);
+    await app.inject({ method: 'POST', url: `/api/admin/cases/${c.json().id}/review`, headers: owner, payload: { decision: 'approve' } });
+    caseCode = c.json().code;
+  });
+
+  test('a tip is charged on top and booked as income; the family gets the whole donation', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/donations', headers: donor, payload: { caseCode, amountToman: '30000', tipPercent: 10 } });
+    const { authority } = await pay(res);
+    assert.equal((await app.inject({ method: 'GET', url: `/api/mock-gateway/${authority}` })).json().amount, 330_000);
+    const c = (await app.inject({ method: 'GET', url: `/api/cases/${caseCode}` })).json();
+    assert.equal(c.raised, 300_000);
+    assert.equal((await revenue()).all.tip, 30_000);
+    const bad = await app.inject({ method: 'POST', url: '/api/donations', headers: donor, payload: { caseCode, amountToman: '30000', tipPercent: 7 } });
+    assert.equal(bad.statusCode, 400);
+  });
+
+  test('a gift card goes to families automatically and its fee is income', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/gifts', headers: donor, payload: { kind: 'memory', theme: 'dawn', fromName: 'خانوادهٔ نمونه', toName: 'پدربزرگ', message: 'روحش شاد', amountToman: '50000' } });
+    const code = res.json().code;
+    assert.equal((await app.inject({ method: 'GET', url: `/api/gifts/${code}` })).statusCode, 404, 'unpaid cards stay hidden');
+    await pay(res);
+    const card = (await app.inject({ method: 'GET', url: `/api/gifts/${code}` })).json();
+    assert.equal(card.toName, 'پدربزرگ');
+    assert.ok(card.helped >= 1);
+    assert.equal((await revenue()).all.gift_fee, 200_000);
+  });
+
+  test('the monthly circle starts after payment and spreads the gift over cases', async () => {
+    await pay(await app.inject({ method: 'POST', url: '/api/circle/pay', headers: donor, payload: { amountToman: '100000', category: 'electricity' } }));
+    const m = (await app.inject({ method: 'GET', url: '/api/my/circle', headers: donor })).json();
+    assert.equal(m.member.active, true);
+    assert.ok(m.thisMonth.cases >= 1);
+    assert.equal((await revenue()).members, 1);
+  });
+
+  test('a sponsored campaign shows public giving plus the sponsor match', async () => {
+    const c = await app.inject({ method: 'POST', url: '/api/admin/campaigns', headers: owner, payload: { slug: 'winter-light', title: 'زمستان روشن', sponsor: 'شرکت نمونه', goalToman: '1000000', matchPercent: 100, matchCapToman: '15000' } });
+    assert.equal(c.statusCode, 200, c.body);
+    await pay(await app.inject({ method: 'POST', url: '/api/donations', headers: donor, payload: { campaign: 'winter-light', amountToman: '20000' } }));
+    const v = (await app.inject({ method: 'GET', url: '/api/campaigns/winter-light' })).json();
+    assert.equal(v.raised, 200_000);
+    assert.equal(v.matched, 150_000, 'match stops at the cap');
+  });
+
+  test('senior managers manage the team; plain admins cannot', async () => {
+    assert.equal((await app.inject({ method: 'POST', url: '/api/admin/team', headers: donor, payload: { phone: '09121112222', level: 'admin' } })).statusCode, 403);
+    const add = await app.inject({ method: 'POST', url: '/api/admin/team', headers: owner, payload: { phone: '09121112222', level: 'admin' } });
+    assert.equal(add.statusCode, 200, add.body);
+    const helper = await login('09121112222');
+    const me = (await app.inject({ method: 'GET', url: '/api/me', headers: helper })).json().user;
+    assert.equal(me.role, 'admin');
+    assert.equal(me.isOwner, false);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/admin/overview', headers: helper })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'PUT', url: '/api/admin/trust', headers: helper, payload: {} })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/admin/revenue', headers: helper })).statusCode, 403);
+    const self = (await app.inject({ method: 'GET', url: '/api/me', headers: owner })).json().user;
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/admin/team/${self.id}`, headers: owner })).statusCode, 409);
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/admin/team/${add.json().id}`, headers: owner })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/admin/overview', headers: helper })).statusCode, 403);
+  });
+
+  test('companies and charities can ask to partner without an account', async () => {
+    const r = await app.inject({ method: 'POST', url: '/api/leads', headers: H, payload: { type: 'company', org: 'شرکت نمونه', contact: 'خانم نمونه', phone: '02188888888', plan: 'grow' } });
+    assert.equal(r.statusCode, 200, r.body);
+    const leads = (await app.inject({ method: 'GET', url: '/api/admin/leads', headers: owner })).json();
+    assert.equal(leads.items[0].org, 'شرکت نمونه');
+  });
+});

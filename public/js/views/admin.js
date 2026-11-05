@@ -1,6 +1,6 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate } from '../app.js';
-import { CATEGORY_ICONS, busy, emptyState, fa, faDate, faDateTime, field, h, icon, moneyInput, relTime, toast, toman } from '../ui.js';
+import { CATEGORY_ICONS, busy, emptyState, fa, faDate, faDateTime, field, h, icon, moneyInput, relTime, toAscii, toast, toman } from '../ui.js';
 import { STATUS, statusPill } from './account.js';
 
 const TABS = {
@@ -9,8 +9,12 @@ const TABS = {
   users: ['کاربران', 'users'],
   donations: ['کمک‌ها', 'heart'],
   events: ['رویدادها', 'clock'],
-  trust: ['شفافیت و مدارک', 'badge'],
-  app: ['نسخهٔ اندروید', 'android'],
+  team: ['تیم مدیریت', 'shield'],
+  revenue: ['درآمد', 'gift', true],
+  campaigns: ['کمپین‌ها', 'trophy'],
+  leads: ['همکاری‌ها', 'house'],
+  trust: ['شفافیت و مدارک', 'badge', true],
+  app: ['نسخهٔ اندروید', 'android', true],
 };
 
 /* ---------- Events in plain words ---------- */
@@ -37,6 +41,16 @@ const EVENTS = {
   'admin.trust.updated': ['admin', 'badge', 'صفحهٔ شفافیت را ویرایش کرد'],
   'admin.file.uploaded': ['admin', 'upload', 'فایل عمومی بارگذاری کرد'],
   'admin.app.published': ['admin', 'android', 'نسخهٔ جدید اندروید منتشر کرد'],
+  'admin.team.set': ['admin', 'shield', 'سطح دسترسی یک عضو تیم را تعیین کرد'],
+  'admin.team.removed': ['admin', 'x', 'دسترسی مدیریت یک نفر را برداشت'],
+  'admin.revenue.added': ['admin', 'gift', 'درآمد بیرون از سایت ثبت کرد'],
+  'admin.revenue.settings': ['admin', 'settings', 'قیمت‌ها را تغییر داد'],
+  'admin.campaign.created': ['admin', 'trophy', 'کمپین تازه ساخت'],
+  'admin.campaign.updated': ['admin', 'trophy', 'کمپین را ویرایش کرد'],
+  'admin.lead.updated': ['admin', 'house', 'وضعیت درخواست همکاری را تغییر داد'],
+  'circle.renewed': ['donation', 'users', 'عضویت حلقهٔ مهر را فعال یا تمدید کرد'],
+  'circle.cancelled': ['donation', 'users', 'عضویت حلقهٔ مهر را لغو کرد'],
+  'lead.created': ['user', 'house', 'درخواست همکاری فرستاد'],
 };
 
 /** "Android · Chrome" style summary of a user agent. */
@@ -83,19 +97,20 @@ window.addEventListener('hashchange', () => clearInterval(refreshTimer));
 export async function adminView(page) {
   clearInterval(refreshTimer);
   const q = currentQuery();
-  const tab = TABS[q.get('tab')] ? q.get('tab') : 'overview';
+  const visible = Object.entries(TABS).filter(([, t]) => !t[2] || state.user.isOwner);
+  const tab = visible.some(([k]) => k === q.get('tab')) ? q.get('tab') : 'overview';
   const body = h('div', {});
   const reload = h('button', { class: 'btn btn-sm btn-ghost', title: 'به‌روزرسانی' }, icon('refresh'), 'به‌روزرسانی');
   reload.onclick = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
   page.append(
     h('div', { class: 'page-head admin-head' },
-      h('div', {}, h('h1', {}, icon('shield'), ' پنل مدیریت'),
+      h('div', {}, h('h1', {}, icon('shield'), ' پنل مدیریت', ' ', h('span', { class: `pill ${state.user.isOwner ? 'pill-success' : 'pill-info'}` }, state.user.isOwner ? 'مدیر ارشد' : 'ادمین')),
         h('p', { class: 'muted small' }, 'همهٔ اتفاقات مهرپل در یک جا. هر مشاهدهٔ اطلاعات هویتی در گزارش رویدادها ثبت می‌شود.')),
       reload),
-    h('div', { class: 'segmented scroll' }, Object.entries(TABS).map(([k, [label, ic]]) =>
+    h('div', { class: 'segmented scroll' }, visible.map(([k, [label, ic]]) =>
       h('a', { class: tab === k ? 'active' : '', href: `#/admin?tab=${k}` }, icon(ic), ' ', label))),
     body);
-  const views = { overview, requests, users, donations, events, trust, app: appRelease };
+  const views = { overview, requests, users, donations, events, team, revenue, campaigns, leads, trust, app: appRelease };
   await views[tab](body, q);
 }
 
@@ -450,4 +465,214 @@ function actions(c, cat) {
       h('p', { class: 'muted small' }, `مبلغ ${toman(c.amount)} را به «${c.payee}» واریز و شمارهٔ پیگیری را ثبت کنید.`), field('شمارهٔ پیگیری واریز', ref), btn);
   }
   return null;
+}
+
+/* ---------- Management team ---------- */
+
+async function team(body) {
+  const { items } = await api.get('/api/admin/team');
+  const owner = state.user.isOwner;
+  const list = h('div', {}, items.map((m) => {
+    const level = h('select', { class: 'lead-status', disabled: !owner || m.founder || m.id === state.user.id },
+      h('option', { value: 'owner', selected: m.isOwner }, 'مدیر ارشد'), h('option', { value: 'admin', selected: !m.isOwner }, 'ادمین'));
+    level.onchange = async () => {
+      try {
+        await api.post('/api/admin/team', { phone: m.phone, level: level.value });
+        toast('سطح دسترسی تغییر کرد', 'success');
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+    const remove = h('button', { class: 'btn btn-sm btn-danger-ghost' }, icon('x'), 'برداشتن دسترسی');
+    remove.onclick = busy(remove, async () => {
+      if (!confirm(`دسترسی مدیریت ${m.phone} برداشته شود؟`)) return;
+      try {
+        await api.del(`/api/admin/team/${m.id}`);
+        toast('دسترسی برداشته شد');
+        navigate(`/admin?tab=team&t=${Date.now()}`);
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+    return h('div', { class: 'team-row' },
+      h('span', { class: 'avatar' }, icon(m.isOwner ? 'shield' : 'user')),
+      h('div', { class: 'grow' },
+        h('strong', {}, m.fullName || m.displayName || 'هنوز وارد نشده'), ' ',
+        m.founder ? h('span', { class: 'pill pill-info' }, 'بنیان‌گذار') : null,
+        m.id === state.user.id ? h('span', { class: 'pill pill-muted' }, 'شما') : null,
+        h('div', { class: 'muted small' }, h('span', { dir: 'ltr' }, m.phone), ' · ', m.lastLoginAt ? `آخرین ورود ${ago(m.lastLoginAt)}` : 'هنوز وارد نشده')),
+      level, owner && !m.founder && m.id !== state.user.id ? remove : null);
+  }));
+
+  const phone = h('input', { class: 'input', dir: 'ltr', inputmode: 'tel', placeholder: '09xx xxx xxxx' });
+  const lvl = h('select', { class: 'input' }, h('option', { value: 'admin' }, 'ادمین (بررسی و پیگیری)'), h('option', { value: 'owner' }, 'مدیر ارشد (دسترسی کامل)'));
+  const add = h('button', { class: 'btn btn-primary' }, icon('plus'), 'افزودن به تیم');
+  add.onclick = busy(add, async () => {
+    try {
+      await api.post('/api/admin/team', { phone: phone.value, level: lvl.value });
+      toast('اضافه شد؛ با همین شماره وارد شود تا پنل را ببیند', 'success');
+      navigate(`/admin?tab=team&t=${Date.now()}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  body.append(
+    h('section', { class: 'card' }, h('h2', {}, icon('users'), 'تیم مدیریت'),
+      h('ul', { class: 'checks small' },
+        h('li', {}, icon('check'), h('span', {}, h('strong', {}, 'مدیر ارشد: '), 'همه‌چیز، به‌علاوهٔ تیم، درآمد، کمپین‌ها، صفحهٔ شفافیت و نسخهٔ اندروید.')),
+        h('li', {}, icon('check'), h('span', {}, h('strong', {}, 'ادمین: '), 'بررسی و تأیید درخواست‌ها، کاربران، کمک‌ها، رویدادها و درخواست‌های همکاری.'))),
+      list),
+    owner ? h('section', { class: 'card' }, h('h2', {}, icon('plus'), 'افزودن مدیر یا ادمین'),
+      h('p', { class: 'muted small' }, 'شمارهٔ موبایل شخص را وارد کنید. اگر هنوز ثبت‌نام نکرده، حسابش ساخته می‌شود و با اولین ورود، پنل را می‌بیند.'),
+      h('div', { class: 'two-col' }, field('شمارهٔ موبایل', phone), field('سطح دسترسی', lvl)), add) : '');
+}
+
+/* ---------- Income ---------- */
+
+const REVENUE_KINDS = { tip: 'حمایت اختیاری خیّرین', gift_fee: 'کارت هدیهٔ مهر', circle_fee: 'عضویت حلقهٔ مهر', csr: 'قرارداد شرکت‌ها', license: 'اشتراک خیریه‌ها', other: 'سایر' };
+
+async function revenue(body) {
+  const r = await api.get('/api/admin/revenue');
+  const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+  const max = Math.max(1, ...r.monthly.map((m) => m.v));
+  const s = r.settings;
+
+  const kind = h('select', { class: 'input' }, ['csr', 'license', 'other'].map((k) => h('option', { value: k }, REVENUE_KINDS[k])));
+  const amount = moneyInput({ placeholder: 'مبلغ به تومان' });
+  const note = h('input', { class: 'input', maxlength: 200, placeholder: 'مثلاً: قرارداد سه‌ماههٔ شرکت فلان' });
+  const addBtn = h('button', { class: 'btn btn-primary' }, icon('plus'), 'ثبت درآمد');
+  addBtn.onclick = busy(addBtn, async () => {
+    try {
+      await api.post('/api/admin/revenue', { kind: kind.value, amountToman: amount.raw(), note: note.value });
+      toast('ثبت شد', 'success');
+      navigate(`/admin?tab=revenue&t=${Date.now()}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  const num = (v) => h('input', { class: 'input mono', dir: 'ltr', inputmode: 'numeric', value: String(v) });
+  const tips = h('input', { class: 'input mono', dir: 'ltr', value: s.tipOptions.join('، ') });
+  const tipDefault = num(s.tipDefault);
+  const giftFee = num(s.giftFee);
+  const circleFee = num(s.circleFee);
+  const circleMin = num(s.circleMin);
+  const save = h('button', { class: 'btn' }, icon('check'), 'ذخیرهٔ قیمت‌ها');
+  const n = (el) => Number(toAscii(el.value).replace(/\D/g, ''));
+  save.onclick = busy(save, async () => {
+    try {
+      await api.put('/api/admin/revenue/settings', {
+        ...s, tipOptions: toAscii(tips.value).split(/[^\d]+/).filter(Boolean).map(Number),
+        tipDefault: n(tipDefault), giftFee: n(giftFee), circleFee: n(circleFee), circleMin: n(circleMin),
+      });
+      toast('قیمت‌ها ذخیره شد', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  body.append(
+    h('div', { class: 'kpis' },
+      h('div', { class: 'kpi hot' }, h('span', {}, icon('gift'), 'درآمد این ماه'), h('strong', {}, toman(sum(r.month))), h('small', {}, 'جدا از کمک‌ها')),
+      h('div', { class: 'kpi' }, h('span', {}, icon('activity'), 'کل درآمد'), h('strong', {}, toman(sum(r.all)))),
+      h('div', { class: 'kpi' }, h('span', {}, icon('users'), 'اعضای فعال حلقه'), h('strong', { 'data-count': r.members }, fa(r.members))),
+      h('div', { class: 'kpi' }, h('span', {}, icon('gift'), 'کارت‌های هدیه'), h('strong', { 'data-count': r.gifts }, fa(r.gifts)))),
+    h('section', { class: 'card' }, h('h2', {}, icon('activity'), 'درآمد به تفکیک'),
+      Object.entries(REVENUE_KINDS).map(([k, label]) => kv(label, `${toman(r.month[k] ?? 0)} این ماه · ${toman(r.all[k] ?? 0)} از ابتدا`)),
+      r.monthly.length ? h('div', { class: 'bar-chart', 'aria-label': 'درآمد ماهانه' }, r.monthly.map((m) =>
+        h('div', { title: toman(m.v) }, h('span', { style: `height:${Math.round((m.v / max) * 110)}px` }), m.month.slice(2).replace('-', '/')))) : null),
+    h('section', { class: 'card' }, h('h2', {}, icon('plus'), 'ثبت درآمد بیرون از سایت'),
+      h('p', { class: 'muted small' }, 'قراردادهای شرکت‌ها و اشتراک خیریه‌ها را که بیرون از درگاه پرداخت می‌شوند، اینجا ثبت کنید.'),
+      h('div', { class: 'two-col' }, field('نوع', kind), field('مبلغ (تومان)', amount)), field('توضیح', note), addBtn),
+    h('section', { class: 'card' }, h('h2', {}, icon('settings'), 'قیمت‌ها'),
+      h('div', { class: 'two-col' },
+        field('درصدهای پیشنهادی حمایت', tips, 'مثلاً ۰، ۵، ۱۰، ۱۵'), field('درصد پیش‌فرض', tipDefault),
+        field('هزینهٔ صدور کارت هدیه (تومان)', giftFee), field('حق عضویت ماهانهٔ حلقه (تومان)', circleFee),
+        field('حداقل کمک ماهانهٔ حلقه (تومان)', circleMin)), save),
+    h('section', { class: 'card table-card' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, ['زمان', 'نوع', 'مبلغ', 'از طرف', 'توضیح'].map((t) => h('th', {}, t)))),
+      h('tbody', {}, r.recent.length ? r.recent.map((x) => h('tr', {},
+        h('td', {}, faDateTime(x.created_at)), h('td', {}, REVENUE_KINDS[x.kind]), h('td', {}, toman(x.amount)),
+        h('td', {}, x.user_id ? h('a', { href: `#/admin/user/${x.user_id}` }, x.displayName || x.phone) : '—'), h('td', { class: 'wrap' }, x.note || '—')))
+        : h('tr', {}, h('td', { colspan: 5, class: 'muted' }, 'هنوز درآمدی ثبت نشده است.'))))));
+}
+
+/* ---------- Campaigns ---------- */
+
+async function campaigns(body, q) {
+  const { items } = await api.get('/api/admin/campaigns');
+  const editing = items.find((c) => c.id === q.get('edit'));
+  const c = editing ?? { slug: '', title: '', sponsor: '', sponsorLogo: '', sponsorLink: '', description: '', category: '', province: '', goal: 0, matchPercent: 0, matchCap: 0, endsAt: null, active: true };
+  const { categories, provinces } = state.meta;
+  const input = (v, attrs = {}) => h(attrs.rows ? 'textarea' : 'input', { class: 'input', value: v ?? '', ...attrs });
+  const slug = input(c.slug, { dir: 'ltr', placeholder: 'winter-light', maxlength: 40 });
+  const title = input(c.title, { maxlength: 100 });
+  const sponsor = input(c.sponsor, { maxlength: 80 });
+  const logo = input(c.sponsorLogo, { dir: 'ltr', placeholder: 'https:// یا بارگذاری' });
+  const link = input(c.sponsorLink, { dir: 'ltr', placeholder: 'https://' });
+  const desc = input(c.description, { rows: 3, maxlength: 1500 });
+  const cat = h('select', { class: 'input' }, h('option', { value: '' }, 'همهٔ دسته‌ها'), Object.entries(categories).map(([k, v]) => h('option', { value: k, selected: c.category === k }, v.label)));
+  const prov = h('select', { class: 'input' }, h('option', { value: '' }, 'همهٔ استان‌ها'), provinces.map((p) => h('option', { value: p, selected: c.province === p }, p)));
+  const goal = moneyInput({ value: c.goal ? fa(Math.round(c.goal / 10)) : '' });
+  const match = input(String(c.matchPercent), { dir: 'ltr', inputmode: 'numeric' });
+  const cap = moneyInput({ value: c.matchCap ? fa(Math.round(c.matchCap / 10)) : '' });
+  const ends = input(c.endsAt ? new Date(c.endsAt).toISOString().slice(0, 10) : '', { type: 'date', dir: 'ltr' });
+  const active = h('input', { type: 'checkbox', checked: c.active });
+  const saveBtn = h('button', { class: 'btn btn-primary' }, icon('check'), editing ? 'ذخیرهٔ تغییرات' : 'ساخت کمپین');
+  saveBtn.onclick = busy(saveBtn, async () => {
+    const payload = {
+      slug: slug.value.trim(), title: title.value, sponsor: sponsor.value, sponsorLogo: logo.value, sponsorLink: link.value, description: desc.value,
+      category: cat.value, province: prov.value, goalToman: goal.raw(), matchPercent: Number(toAscii(match.value)) || 0, matchCapToman: cap.raw(),
+      endsAt: ends.value ? new Date(`${ends.value}T23:59:59`).getTime() : null, active: active.checked,
+    };
+    try {
+      if (editing) await api.put(`/api/admin/campaigns/${editing.id}`, payload);
+      else await api.post('/api/admin/campaigns', payload);
+      toast('ذخیره شد', 'success');
+      navigate(`/admin?tab=campaigns&t=${Date.now()}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  body.append(
+    items.length ? h('div', { class: 'list mb' }, items.map((x) => h('div', { class: 'card list-item' },
+      h('span', { class: 'cat-dot' }, icon('trophy')),
+      h('div', { class: 'grow' }, h('strong', {}, x.title), h('div', { class: 'muted small' }, `${x.sponsor} · ${toman(x.total)} از ${toman(x.goal)} · ${fa(x.donors)} نفر`)),
+      h('span', { class: `pill ${x.active ? 'pill-success' : 'pill-muted'}` }, x.active ? 'فعال' : 'متوقف'),
+      h('a', { class: 'btn btn-sm', href: `#/campaign/${x.slug}` }, icon('eye')),
+      state.user.isOwner ? h('a', { class: 'btn btn-sm', href: `#/admin?tab=campaigns&edit=${x.id}` }, 'ویرایش') : null))) : emptyState('trophy', 'هنوز کمپینی نساخته‌اید'),
+    state.user.isOwner ? h('section', { class: 'card' }, h('h2', {}, icon(editing ? 'settings' : 'plus'), editing ? `ویرایش «${c.title}»` : 'کمپین جدید'),
+      h('div', { class: 'two-col' }, field('عنوان', title), field('نشانی کوتاه (انگلیسی)', slug, 'در آدرس کمپین می‌آید')),
+      h('div', { class: 'two-col' }, field('نام حامی', sponsor), field('سایت حامی', link)),
+      h('div', { class: 'row-gap' }, field('لوگوی حامی', logo), uploadButton('بارگذاری لوگو', (f) => { logo.value = f.url; })),
+      field('توضیح کمپین', desc),
+      h('div', { class: 'two-col' }, field('دستهٔ بدهی', cat), field('استان', prov), field('هدف (تومان)', goal), field('تاریخ پایان', ends),
+        field('درصد هم‌پوشانی حامی', match, '۱۰۰ یعنی حامی هم‌اندازهٔ کمک مردم اضافه می‌کند'), field('سقف تعهد حامی (تومان)', cap)),
+      h('label', { class: 'check' }, active, 'کمپین فعال است'), saveBtn) : '');
+}
+
+/* ---------- Partnership requests ---------- */
+
+const LEAD_STATUS = { new: 'جدید', contacted: 'تماس گرفته شد', won: 'قرارداد بسته شد', lost: 'منصرف شد' };
+
+async function leads(body) {
+  const { items } = await api.get('/api/admin/leads');
+  if (!items.length) return body.append(emptyState('house', 'هنوز درخواست همکاری نرسیده', 'فرم همکاری در صفحهٔ «همکاری سازمان‌ها» است.', h('a', { class: 'btn', href: '#/business' }, 'دیدن صفحه')));
+  body.append(h('div', { class: 'card table-card' }, h('table', { class: 'table' },
+    h('thead', {}, h('tr', {}, ['زمان', 'نوع', 'مجموعه', 'تماس', 'طرح', 'پیام', 'وضعیت'].map((t) => h('th', {}, t)))),
+    h('tbody', {}, items.map((l) => {
+      const status = h('select', { class: 'lead-status' }, Object.entries(LEAD_STATUS).map(([k, label]) => h('option', { value: k, selected: l.status === k }, label)));
+      status.onchange = async () => {
+        try {
+          await api.patch(`/api/admin/leads/${l.id}`, { status: status.value });
+          toast('به‌روز شد', 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+      return h('tr', {},
+        h('td', {}, faDateTime(l.created_at)), h('td', {}, l.type === 'company' ? 'شرکت' : 'خیریه'), h('td', {}, h('strong', {}, l.org)),
+        h('td', {}, l.contact, h('div', { class: 'small', dir: 'ltr' }, l.phone), l.email ? h('div', { class: 'small', dir: 'ltr' }, l.email) : null),
+        h('td', {}, l.plan || '—'), h('td', { class: 'wrap' }, l.message || '—'), h('td', {}, status));
+    })))));
 }

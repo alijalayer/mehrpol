@@ -64,6 +64,8 @@ export function profileMenu(onLogout) {
           h('a', { class: 'menu-link', href: '#/me' }, icon('user'), 'پروفایل و دستاوردها'),
           h('a', { class: 'menu-link', href: '#/me?tab=donations' }, icon('receipt'), 'کمک‌های من'),
           h('a', { class: 'menu-link', href: '#/me?tab=requests' }, icon('file'), 'درخواست‌های من'),
+          h('a', { class: 'menu-link', href: '#/circle' }, icon('users'), 'حلقهٔ مهر'),
+          h('a', { class: 'menu-link', href: '#/gift' }, icon('gift'), 'کارت هدیهٔ مهر'),
           h('a', { class: 'menu-link', href: '#/honor' }, icon('trophy'), 'تالار افتخار'),
           state.user.role === 'admin' ? h('a', { class: 'menu-link', href: '#/admin' }, icon('shield'), 'پنل مدیریت') : null,
           logout));

@@ -3,8 +3,9 @@ import { CATEGORIES, publicCase } from '../domain.js';
 import { audit, tx } from '../db.js';
 import { HttpError, requireUser } from '../guards.js';
 import { toAsciiDigits } from '../security.js';
+import { afterPayment, revenueSettings } from '../revenue.js';
 
-const MIN_DONATION = 100_000; // rial = ۱۰ هزار تومان
+export const MIN_DONATION = 100_000; // rial = ۱۰ هزار تومان
 
 /**
  * Applies a verified donation to its case inside one transaction. Whatever does
@@ -14,7 +15,7 @@ const MIN_DONATION = 100_000; // rial = ۱۰ هزار تومان
 export function applyDonation(db, donationId, refId) {
   return tx(db, () => {
     const d = db.prepare('SELECT * FROM donations WHERE id = ?').get(donationId);
-    if (!d || d.status !== 'initiated') return { donation: d, funded: null };
+    if (!d || d.status !== 'initiated') return { donation: d, funded: null, fresh: false };
     let applied = 0;
     let funded = null;
     if (d.case_id) {
@@ -31,7 +32,7 @@ export function applyDonation(db, donationId, refId) {
     db.prepare("UPDATE donations SET status = 'succeeded', applied = ?, closed_case = ?, ref_id = ?, verified_at = ? WHERE id = ?")
       .run(applied, funded ? 1 : 0, refId, Date.now(), d.id);
     audit(db, d.donor_id, 'donation.succeeded', d.case_id, { donation: d.id, amount: d.amount, applied });
-    return { donation: db.prepare('SELECT * FROM donations WHERE id = ?').get(d.id), funded };
+    return { donation: db.prepare('SELECT * FROM donations WHERE id = ?').get(d.id), funded, fresh: true };
   });
 }
 
@@ -48,8 +49,30 @@ export async function settleFundedCase(ctx, funded) {
   audit(ctx.db, null, 'billpay.paid', funded.id, { trackingCode: result.trackingCode });
 }
 
+/**
+ * Opens a gateway payment for amount (the donation) + extra (platform income) and records it.
+ * Used by case donations, gift cards, the monthly circle and campaigns.
+ */
+export async function startPayment(ctx, { user, kind, amount, extra = 0, caseId = null, ref = null, anonymous = true, description }) {
+  const id = randomUUID();
+  const callbackUrl = `${ctx.config.publicUrl}/payment/callback?donation=${id}`;
+  const { authority, redirectUrl } = await ctx.payment.start({ amountRial: amount + extra, description, callbackUrl });
+  ctx.db.prepare(`INSERT INTO donations (id, case_id, donor_id, amount, extra, kind, ref, status, gateway, authority, anonymous, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'initiated', ?, ?, ?, ?)`)
+    .run(id, caseId, user.id, amount, extra, kind, ref, ctx.payment.name, authority, anonymous ? 1 : 0, Date.now());
+  return { id, redirectUrl };
+}
+
+/** Parses a toman amount typed in a form into rial; throws a readable error on nonsense. */
+export function rialFrom(tomanText, { min = MIN_DONATION, label = 'مبلغ' } = {}) {
+  const toman = Number(toAsciiDigits(String(tomanText ?? '')).replace(/[,،\s]/g, ''));
+  if (!Number.isSafeInteger(toman) || toman * 10 < min) throw new HttpError(400, `حداقل ${label} ${(min / 10).toLocaleString('fa-IR')} تومان است`);
+  if (toman * 10 > 2_000_000_000) throw new HttpError(400, 'مبلغ بیش از حد مجاز است');
+  return toman * 10;
+}
+
 export default async function donationRoutes(app, ctx) {
-  const { db, config, payment, limiter } = ctx;
+  const { db, payment, limiter } = ctx;
 
   const donationView = (d) => {
     const c = d.case_id ? db.prepare('SELECT * FROM cases WHERE id = ?').get(d.case_id) : null;
@@ -62,6 +85,10 @@ export default async function donationRoutes(app, ctx) {
       anonymous: Boolean(d.anonymous),
       createdAt: d.created_at,
       verifiedAt: d.verified_at,
+      extra: d.extra,
+      kind: d.kind,
+      giftCode: d.kind === 'gift' ? db.prepare('SELECT code FROM gift_cards WHERE donation_id = ?').get(d.id)?.code ?? null : null,
+      campaign: d.kind === 'campaign' ? db.prepare('SELECT slug, title FROM campaigns WHERE id = ?').get(d.ref) ?? null : null,
       case: c ? publicCase(c) : null,
     };
   };
@@ -74,6 +101,8 @@ export default async function donationRoutes(app, ctx) {
         properties: {
           caseCode: { type: 'string', pattern: '^[A-Z0-9]{7}$' },
           amountToman: { type: 'string', maxLength: 15 },
+          tipPercent: { type: 'integer', minimum: 0, maximum: 30, default: 0 },
+          campaign: { type: 'string', pattern: '^[a-z0-9-]{3,40}$' },
           anonymous: { type: 'boolean', default: true },
         },
       },
@@ -81,10 +110,16 @@ export default async function donationRoutes(app, ctx) {
   }, async (req) => {
     const user = requireUser(req);
     if (!limiter.take(`donate:${user.id}`, 20, 3600_000)) throw new HttpError(429, 'تعداد تلاش‌های پرداخت زیاد است');
-    const toman = Number(toAsciiDigits(req.body.amountToman).replace(/[,،\s]/g, ''));
-    if (!Number.isSafeInteger(toman) || toman * 10 < MIN_DONATION) throw new HttpError(400, 'حداقل مبلغ کمک ۱۰ هزار تومان است');
-    let amount = toman * 10;
-    if (amount > 2_000_000_000) throw new HttpError(400, 'مبلغ بیش از حد مجاز است');
+    const amount = rialFrom(req.body.amountToman, { label: 'مبلغ کمک' });
+    // The optional tip for Mehrpol is charged on top; the full donation still reaches the family.
+    if (!revenueSettings(db).tipOptions.includes(req.body.tipPercent)) throw new HttpError(400, 'درصد حمایت نامعتبر است');
+    const extra = Math.round((amount * req.body.tipPercent) / 100 / 10) * 10;
+
+    let campaign = null;
+    if (req.body.campaign) {
+      campaign = db.prepare('SELECT * FROM campaigns WHERE slug = ? AND active = 1').get(req.body.campaign);
+      if (!campaign || (campaign.ends_at && campaign.ends_at < Date.now())) throw new HttpError(409, 'این کمپین به پایان رسیده است');
+    }
 
     let caseRow = null;
     if (req.body.caseCode) {
@@ -96,14 +131,13 @@ export default async function donationRoutes(app, ctx) {
       if (remaining - amount > 0 && remaining - amount < MIN_DONATION) throw new HttpError(400, 'لطفاً کل مبلغ باقی‌مانده را پرداخت کنید');
     }
 
-    const id = randomUUID();
-    const callbackUrl = `${config.publicUrl}/payment/callback?donation=${id}`;
-    const description = caseRow ? `کمک به درخواست ${caseRow.code}` : 'کمک به صندوق عمومی';
-    const { authority, redirectUrl } = await payment.start({ amountRial: amount, description, callbackUrl });
-    db.prepare(`INSERT INTO donations (id, case_id, donor_id, amount, status, gateway, authority, anonymous, created_at)
-      VALUES (?, ?, ?, ?, 'initiated', ?, ?, ?, ?)`)
-      .run(id, caseRow?.id ?? null, user.id, amount, payment.name, authority, req.body.anonymous ? 1 : 0, Date.now());
-    return { id, redirectUrl };
+    return startPayment(ctx, {
+      user, amount, extra, anonymous: req.body.anonymous,
+      kind: caseRow ? 'case' : campaign ? 'campaign' : 'fund',
+      caseId: caseRow?.id ?? null,
+      ref: campaign?.id ?? null,
+      description: caseRow ? `کمک به درخواست ${caseRow.code}` : campaign ? `کمپین ${campaign.title}` : 'کمک به صندوق عمومی',
+    });
   });
 
   // The gateway redirects the donor's browser here. The query is untrusted; verify() asks the gateway.
@@ -116,11 +150,13 @@ export default async function donationRoutes(app, ctx) {
       const queryAuthority = req.query.Authority ?? req.query.authority;
       let result = { ok: false };
       if (!queryAuthority || queryAuthority === d.authority) {
-        result = await payment.verify({ authority: d.authority, amountRial: d.amount, query: req.query });
+        result = await payment.verify({ authority: d.authority, amountRial: d.amount + d.extra, query: req.query });
       }
       if (result.ok) {
-        const { funded } = applyDonation(db, d.id, result.refId);
+        const { funded, fresh, donation } = applyDonation(db, d.id, result.refId);
         await settleFundedCase(ctx, funded);
+        // Tips and fees are booked, gift cards activated, circle and campaign money spread over cases.
+        if (fresh) for (const c of afterPayment(db, donation)) await settleFundedCase(ctx, c);
       } else {
         db.prepare("UPDATE donations SET status = 'failed', verified_at = ? WHERE id = ? AND status = 'initiated'").run(Date.now(), d.id);
       }
@@ -154,9 +190,9 @@ export default async function donationRoutes(app, ctx) {
       return { redirect: `/payment/callback?donation=${d.id}&Authority=${req.body.authority}&Status=${req.body.pay ? 'OK' : 'NOK'}` };
     });
     app.get('/api/mock-gateway/:authority', async (req) => {
-      const d = db.prepare('SELECT amount FROM donations WHERE authority = ?').get(req.params.authority);
+      const d = db.prepare('SELECT amount + extra AS total FROM donations WHERE authority = ?').get(req.params.authority);
       if (!d) throw new HttpError(404, 'تراکنش پیدا نشد');
-      return { amount: d.amount };
+      return { amount: d.total };
     });
   }
 }
