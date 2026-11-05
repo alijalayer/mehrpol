@@ -54,6 +54,8 @@ export async function settleFundedCase(ctx, funded) {
  * Used by case donations, gift cards, the monthly circle and campaigns.
  */
 export async function startPayment(ctx, { user, kind, amount, extra = 0, caseId = null, ref = null, anonymous = true, description }) {
+  // Outside demo mode the test gateway would record donations nobody paid, so it is closed.
+  if (ctx.payment.name === 'mock' && !ctx.config.demoMode && !ctx.config.allowTestPayments) throw new HttpError(503, 'پرداخت آنلاین به‌زودی فعال می‌شود؛ درگاه بانکی هنوز وصل نشده است');
   const id = randomUUID();
   const callbackUrl = `${ctx.config.publicUrl}/payment/callback?donation=${id}`;
   const { authority, redirectUrl } = await ctx.payment.start({ amountRial: amount + extra, description, callbackUrl });

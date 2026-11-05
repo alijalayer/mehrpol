@@ -5,9 +5,10 @@ import { createReadStream, createWriteStream, existsSync, readFileSync, renameSy
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { publicCase } from '../domain.js';
-import { audit, getSetting, setSetting } from '../db.js';
+import { audit, getSetting, setSetting, tx } from '../db.js';
 import { HttpError, requireAdmin, requireOwner, sniffFile } from '../guards.js';
-import { cleanText, decryptText, normalizePhone } from '../security.js';
+import { cleanText, decryptText, encryptText, normalizePhone } from '../security.js';
+import { normalizeEmail } from './auth.js';
 import { cleanTrust, currentTrust } from '../trust.js';
 
 const UUID = '^[0-9a-f-]{36}$';
@@ -50,7 +51,7 @@ export default async function manageRoutes(app, ctx) {
   /* ---------- Dashboard ---------- */
 
   const actorEvents = (where, params, limit) => db.prepare(`
-    SELECT a.id, a.action, a.target, a.detail, a.at, a.actor_id AS actorId, u.phone, u.display_name AS displayName, u.role,
+    SELECT a.id, a.action, a.target, a.detail, a.at, a.actor_id AS actorId, COALESCE(u.phone, u.email) AS phone, u.display_name AS displayName, u.role,
            c.code AS caseCode, c.title AS caseTitle
     FROM audit_log a
     LEFT JOIN users u ON u.id = a.actor_id
@@ -78,19 +79,21 @@ export default async function manageRoutes(app, ctx) {
   /* ---------- Users ---------- */
 
   app.get('/api/admin/users', {
-    schema: { querystring: { type: 'object', properties: { q: { type: 'string', maxLength: 20 } } } },
+    schema: { querystring: { type: 'object', properties: { q: { type: 'string', maxLength: 120 } } } },
   }, async (req) => {
     const admin = requireAdmin(req);
-    const q = (req.query.q ?? '').replace(/\D/g, '');
+    // Digits search phones; anything with a letter or @ searches emails.
+    const raw = String(req.query.q ?? '').trim().toLowerCase();
+    const q = /[@a-z]/.test(raw) ? raw : raw.replace(/\D/g, '');
     const rows = db.prepare(`
       SELECT u.*, (SELECT COUNT(*) FROM cases WHERE user_id = u.id) AS cases,
              (SELECT COUNT(*) FROM donations WHERE donor_id = u.id AND status = 'succeeded') AS gifts,
              (SELECT COALESCE(SUM(amount),0) FROM donations WHERE donor_id = u.id AND status = 'succeeded') AS given
-      FROM users u ${q ? 'WHERE u.phone LIKE ?' : ''} ORDER BY u.created_at DESC LIMIT 300`).all(...(q ? [`%${q}%`] : []));
+      FROM users u ${q ? 'WHERE u.phone LIKE ? OR u.email LIKE ?' : ''} ORDER BY u.created_at DESC LIMIT 300`).all(...(q ? [`%${q}%`, `%${q}%`] : []));
     audit(db, admin.id, 'admin.users.listed', null, q ? { q } : null);
     return {
       items: rows.map((u) => ({
-        id: u.id, phone: u.phone, role: u.role, displayName: u.display_name, fullName: name(u.full_name_enc),
+        id: u.id, phone: u.phone, email: u.email, role: u.role, displayName: u.display_name, fullName: name(u.full_name_enc),
         createdAt: u.created_at, lastLoginAt: u.last_login_at, cases: u.cases, gifts: u.gifts, given: u.given, isDemo: !!u.is_demo, isOwner: !!u.is_owner,
       })),
     };
@@ -102,7 +105,7 @@ export default async function manageRoutes(app, ctx) {
     if (!u) throw new HttpError(404, 'کاربر پیدا نشد');
     audit(db, admin.id, 'admin.user.viewed', u.id);
     return {
-      id: u.id, phone: u.phone, role: u.role, isOwner: !!u.is_owner, displayName: u.display_name, bio: u.bio, publicProfile: !!u.public_profile, slug: u.slug,
+      id: u.id, phone: u.phone, email: u.email, phoneVerified: !!u.phone_verified, role: u.role, isOwner: !!u.is_owner, displayName: u.display_name, bio: u.bio, publicProfile: !!u.public_profile, slug: u.slug,
       fullName: name(u.full_name_enc), nationalCode: name(u.national_code_enc), createdAt: u.created_at, lastLoginAt: u.last_login_at, isDemo: !!u.is_demo,
       cases: db.prepare('SELECT * FROM cases WHERE user_id = ? ORDER BY created_at DESC').all(u.id).map((r) => ({ ...publicCase(r), id: r.id })),
       donations: db.prepare(`SELECT d.id, d.amount, d.status, d.gateway, d.ref_id AS refId, d.created_at AS createdAt, c.title AS caseTitle, c.id AS caseId
@@ -178,7 +181,7 @@ export default async function manageRoutes(app, ctx) {
   /* ---------- Management team ---------- */
 
   const teamView = (u) => ({
-    id: u.id, phone: u.phone, displayName: u.display_name, fullName: name(u.full_name_enc), isOwner: !!u.is_owner,
+    id: u.id, phone: u.phone ?? u.email, displayName: u.display_name, fullName: name(u.full_name_enc), isOwner: !!u.is_owner,
     founder: config.adminPhones.includes(u.phone), lastLoginAt: u.last_login_at, createdAt: u.created_at,
   });
 
@@ -216,6 +219,102 @@ export default async function manageRoutes(app, ctx) {
     db.prepare("UPDATE users SET role = 'member', is_owner = 0 WHERE id = ?").run(u.id);
     audit(db, owner.id, 'admin.team.removed', u.id);
     return { ok: true };
+  });
+
+  /* ---------- Site settings: email, demo or real mode, sample data ---------- */
+
+  const mailView = () => {
+    const m = getSetting(db, 'mail', null) ?? {};
+    return {
+      host: m.host ?? '', port: m.port ?? 465, secure: m.secure ?? true, user: m.user ?? '', hasPassword: Boolean(m.passEnc),
+      fromName: m.fromName ?? 'مهرپل', fromAddress: m.fromAddress ?? '', notify: m.notify ?? true,
+    };
+  };
+
+  app.get('/api/admin/settings', async (req) => {
+    requireOwner(req);
+    return {
+      mail: mailView(),
+      mode: { live: !config.demoMode, channel: config.loginChannel },
+      sms: ctx.sms.name,
+      payment: ctx.payment.name,
+      demoRows: db.prepare('SELECT (SELECT COUNT(*) FROM cases WHERE is_demo = 1) AS cases, (SELECT COUNT(*) FROM users WHERE is_demo = 1) AS users').get(),
+    };
+  });
+
+  // The password is write-only: it is never sent back, and an empty field keeps the saved one.
+  app.put('/api/admin/settings/mail', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['host', 'port', 'fromAddress'],
+        properties: {
+          host: { type: 'string', maxLength: 120 }, port: { type: 'integer', minimum: 1, maximum: 65535 }, secure: { type: 'boolean', default: true },
+          user: { type: 'string', maxLength: 120 }, password: { type: 'string', maxLength: 200 }, fromName: { type: 'string', maxLength: 60 },
+          fromAddress: { type: 'string', maxLength: 120 }, notify: { type: 'boolean', default: true },
+        },
+      },
+    },
+  }, async (req) => {
+    const owner = requireOwner(req);
+    const b = req.body;
+    const host = cleanText(b.host, 120);
+    if (!/^[a-z0-9.-]+$/i.test(host)) throw new HttpError(400, 'نشانی سرور ایمیل (SMTP) معتبر نیست');
+    const fromAddress = normalizeEmail(b.fromAddress);
+    if (!fromAddress) throw new HttpError(400, 'ایمیل فرستنده معتبر نیست');
+    const previous = getSetting(db, 'mail', null);
+    setSetting(db, 'mail', {
+      host, port: b.port, secure: b.secure, user: cleanText(b.user, 120), fromName: cleanText(b.fromName, 60) || 'مهرپل', fromAddress, notify: b.notify,
+      passEnc: b.password ? encryptText(config.dataKey, b.password) : previous?.passEnc ?? null,
+    });
+    audit(db, owner.id, 'admin.settings.mail');
+    return mailView();
+  });
+
+  app.post('/api/admin/settings/mail/test', async (req) => {
+    const owner = requireOwner(req);
+    const to = normalizeEmail(req.body?.to) ?? owner.email;
+    if (!to) throw new HttpError(400, 'ایمیلی برای ارسال آزمایشی وارد کنید');
+    try {
+      await ctx.mail.send({ to, subject: 'ایمیل آزمایشی مهرپل', text: 'اگر این ایمیل را می‌بینید، ارسال ایمیل مهرپل درست کار می‌کند.' });
+    } catch (err) {
+      throw err instanceof HttpError ? err : new HttpError(502, `ارسال نشد: ${String(err.message).slice(0, 160)}`);
+    }
+    return { ok: true, to };
+  });
+
+  // Real mode: no codes on screen, no sample banner, sign-in through the chosen channel.
+  app.put('/api/admin/settings/mode', {
+    schema: { body: { type: 'object', required: ['live', 'channel'], properties: { live: { type: 'boolean' }, channel: { type: 'string', enum: ['phone', 'email', 'both'] } } } },
+  }, async (req) => {
+    const owner = requireOwner(req);
+    const { live, channel } = req.body;
+    if (live) {
+      if (channel !== 'phone' && !ctx.mail.configured()) throw new HttpError(409, 'اول تنظیمات ایمیل را کامل کنید و ایمیل آزمایشی را امتحان کنید');
+      if (channel !== 'email' && ctx.sms.name === 'console') throw new HttpError(409, 'برای ورود با پیامک، اول پنل پیامک باید وصل شود؛ فعلاً «ورود با ایمیل» را انتخاب کنید');
+      if (channel === 'email' && !owner.email) throw new HttpError(409, 'اول ایمیل خودتان را در «حساب من ← تنظیمات» وصل کنید، وگرنه بعد از این تغییر نمی‌توانید وارد شوید');
+    }
+    setSetting(db, 'mode', { live, channel });
+    config.demoMode = !live;
+    config.loginChannel = channel;
+    audit(db, owner.id, 'admin.settings.mode', null, { live, channel });
+    return { live, channel };
+  });
+
+  // Removes the clearly-labelled sample cases and donors created by seed:demo, and nothing else.
+  app.post('/api/admin/settings/clear-demo', async (req) => {
+    const owner = requireOwner(req);
+    const removed = tx(db, () => {
+      const cases = 'SELECT id FROM cases WHERE is_demo = 1';
+      const users = 'SELECT id FROM users WHERE is_demo = 1';
+      db.prepare(`DELETE FROM donations WHERE case_id IN (${cases}) OR donor_id IN (${users})`).run();
+      db.prepare(`DELETE FROM documents WHERE case_id IN (${cases})`).run();
+      for (const t of ['certificates', 'sessions', 'circle_members']) db.prepare(`DELETE FROM ${t} WHERE user_id IN (${users})`).run();
+      db.prepare(`UPDATE revenue SET user_id = NULL WHERE user_id IN (${users})`).run();
+      return { cases: db.prepare('DELETE FROM cases WHERE is_demo = 1').run().changes, users: db.prepare('DELETE FROM users WHERE is_demo = 1').run().changes };
+    });
+    audit(db, owner.id, 'admin.settings.demo-cleared', null, removed);
+    return removed;
   });
 
   /* ---------- Android releases ---------- */

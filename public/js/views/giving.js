@@ -8,6 +8,11 @@ let configPromise;
 export const revenueConfig = () => (configPromise ??= api.get('/api/revenue/config'));
 
 const paymentNote = () => h('p', { class: 'muted small center' }, icon('lock'), state.meta.paymentProvider === 'mock' ? 'درگاه آزمایشی — پولی جابه‌جا نمی‌شود' : 'انتقال به درگاه امن شاپرک');
+/** Real mode before a bank gateway is connected: giving is explained, not taken. */
+export const paymentsSoon = () => h('div', { class: 'alert alert-info' }, icon('clock'),
+  h('span', {}, h('strong', {}, 'پرداخت آنلاین به‌زودی فعال می‌شود. '), 'درگاه بانکی در حال راه‌اندازی است؛ تا آن زمان می‌توانید درخواست‌ها را ببینید و برای خودتان یادداشت کنید.'));
+const payable = (form) => (state.meta.paymentsOpen ? form : paymentsSoon());
+
 const requireLogin = (back) => {
   if (state.user) return false;
   navigate(`/login?next=${encodeURIComponent(back)}`);
@@ -93,7 +98,7 @@ export async function giftView(page) {
         toField, field('از طرف', fromName), field('پیام', message),
         h('div', { class: 'field' }, h('span', { class: 'label' }, 'طرح کارت'), themes),
         field('مبلغ کمک (تومان)', amount, `هزینهٔ صدور کارت: ${fa(cfg.giftFee)} تومان، جدا از مبلغ کمک`),
-        submit, paymentNote()),
+        payable(h('div', {}, submit, paymentNote()))),
       h('div', { class: 'gift-preview' }, h('div', { class: 'muted small center' }, 'پیش‌نمایش'), preview)));
 }
 
@@ -185,7 +190,7 @@ export async function circleView(page) {
         h('label', { class: 'label' }, 'کمک ماهانهٔ شما'), chips, amount,
         h('div', { class: 'two-col' }, field('برای چه نوع بدهی‌ای؟', category), field('در کدام استان؟', province)),
         h('div', { class: 'alert alert-info' }, icon('sparkle'), `حق عضویت ماهانه ${fa(cfg.circleFee)} تومان است و جدا از کمک شما حساب می‌شود؛ تمام کمک ماهانه به خانواده‌ها می‌رسد.`),
-        submit, paymentNote())));
+        payable(h('div', {}, submit, paymentNote())))));
 }
 
 /* ---------- Campaigns ---------- */
@@ -245,7 +250,7 @@ export async function campaignView(page, slug) {
         progress(c.total, c.goal),
         h('div', { class: 'muted small' }, `${fa(c.donors)} نفر کمک کرده‌اند`),
         c.matchPercent ? h('div', { class: 'alert alert-success' }, icon('sparkle'), `${c.sponsor} تا سقف ${toman(c.matchCap)}، ${fa(c.matchPercent)}٪ کمک‌ها را اضافه می‌کند. تاکنون: ${toman(c.matched)}`) : null,
-        open ? h('div', { class: 'donate-form' }, h('label', { class: 'label' }, 'چقدر کمک می‌کنید؟'), chips, amount, tip.el, submit, paymentNote())
+        open ? payable(h('div', { class: 'donate-form' }, h('label', { class: 'label' }, 'چقدر کمک می‌کنید؟'), chips, amount, tip.el, submit, paymentNote()))
           : h('div', { class: 'alert alert-info' }, 'این کمپین به پایان رسیده است. سپاس از همهٔ همراهان.'))));
 }
 

@@ -32,7 +32,7 @@ export async function accountView(page) {
         h('div', {}, h('strong', {}, fa(p.stats.cases)), h('span', {}, 'خانواده')),
         h('div', {}, h('strong', {}, fa(p.medals.filter((m) => m.earned).length)), h('span', {}, 'مدال'))),
       levelProgress(p.level),
-      h('div', { class: 'muted small', dir: 'ltr' }, state.user.phone)),
+      h('div', { class: 'muted small', dir: 'ltr' }, state.user.phone ?? state.user.email)),
     h('div', { class: 'segmented scroll' }, Object.entries(TABS).map(([k, label]) =>
       h('a', { class: tab === k ? 'active' : '', href: `#/me?tab=${k}` }, label))),
     body);
@@ -109,8 +109,46 @@ function settingsTab(body, p) {
     h('label', { class: 'check' }, pub, 'نمایش پروفایل من در تالار افتخار (بدون مبلغ و شمارهٔ تلفن)'),
     p.slug ? h('p', {}, h('a', { class: 'small', href: `#/donor/${p.slug}` }, 'مشاهدهٔ پروفایل عمومی من')) : null,
     h('div', { class: 'row-gap' }, save, logout)),
-  themeCard());
+  emailCard(), themeCard());
   appCard().then((card) => card && body.append(card));
+}
+
+/** Links an email to the account (proven with a code), so the person can sign in by email too. */
+function emailCard() {
+  const current = state.user.email;
+  const email = h('input', { class: 'input', type: 'email', dir: 'ltr', maxlength: 120, placeholder: 'name@example.com', value: current ?? '' });
+  const code = h('input', { class: 'input otp', inputmode: 'numeric', dir: 'ltr', maxlength: 6, placeholder: '------' });
+  const codeField = field('کد ارسال‌شده به ایمیل', code);
+  codeField.hidden = true;
+  const send = h('button', { class: 'btn' }, icon('upload'), current ? 'تغییر ایمیل' : 'ارسال کد تأیید');
+  const confirmBtn = h('button', { class: 'btn btn-primary' }, icon('check'), 'تأیید');
+  confirmBtn.hidden = true;
+  send.onclick = busy(send, async () => {
+    try {
+      await api.post('/api/my/email', { email: email.value.trim() });
+      codeField.hidden = false;
+      confirmBtn.hidden = false;
+      code.focus();
+      toast('کد به ایمیل شما رفت؛ پوشهٔ Spam را هم ببینید', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  confirmBtn.onclick = busy(confirmBtn, async () => {
+    try {
+      const res = await api.post('/api/my/email/verify', { email: email.value.trim(), code: code.value });
+      state.user.email = res.email;
+      toast('ایمیل به حساب شما وصل شد', 'success');
+      navigate(`/me?tab=settings&t=${Date.now()}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  return h('section', { class: 'card' }, h('h2', {}, icon('lock'), 'ایمیل و شمارهٔ حساب'),
+    h('div', { class: 'info-row' }, h('span', { class: 'muted' }, 'موبایل'), h('strong', { dir: 'ltr' }, state.user.phone ?? '—')),
+    h('div', { class: 'info-row' }, h('span', { class: 'muted' }, 'ایمیل'), h('strong', { dir: 'ltr' }, current ?? 'هنوز وصل نشده')),
+    h('p', { class: 'muted small' }, 'با ایمیل تأییدشده می‌توانید با ایمیل هم وارد شوید و پیام‌های مهم را دریافت کنید.'),
+    field('ایمیل', email), codeField, h('div', { class: 'row-gap' }, send, confirmBtn));
 }
 
 /** Day / night / follow-the-device choice. */

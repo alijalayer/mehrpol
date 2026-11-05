@@ -3,16 +3,18 @@
   "appName": "مهرپل",
   "webDir": "mobile/www",
   "server": {
-    "url": "https://mehrpol.example.ir",
+    "url": "http://91.121.44.150:3000",
     "errorPath": "index.html",
     "allowNavigation": [
       "payment.zarinpal.com",
       "sandbox.zarinpal.com",
       "*.shaparak.ir"
-    ]
+    ],
+    "cleartext": true
   },
   "android": {
-    "backgroundColor": "#fbf8f3"
+    "backgroundColor": "#fbf8f3",
+    "appendUserAgent": "MehrpolApp/4"
   },
   "plugins": {
     "SplashScreen": {

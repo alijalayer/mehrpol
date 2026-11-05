@@ -85,6 +85,8 @@ export async function newRequestView(page) {
 
   const fullName = h('input', { class: 'input', maxlength: 80, autocomplete: 'name' });
   const nationalCode = h('input', { class: 'input mono', inputmode: 'numeric', dir: 'ltr', maxlength: 10 });
+  // People who signed up by email give a number the reviewer can call.
+  const contactPhone = h('input', { class: 'input', type: 'tel', inputmode: 'numeric', dir: 'ltr', maxlength: 14, placeholder: '09xx xxx xxxx', autocomplete: 'tel' });
   // Documents are picked here and uploaded (encrypted) right after the request is created.
   const files = [];
   const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,application/pdf', multiple: true, class: 'sr-only', id: 'new-docs' });
@@ -108,10 +110,11 @@ export async function newRequestView(page) {
     h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, '۱'), 'نوع بدهی'), tiles, details),
     h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, '۲'), 'شرح وضعیت'),
       field('عنوان کوتاه', title), field('توضیحات', story), counter, field('استان', province)),
-    state.user.hasIdentity ? null : h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, '۳'), 'احراز هویت'),
+    state.user.hasIdentity && state.user.phone ? null : h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, '۳'), 'احراز هویت'),
       h('p', { class: 'muted small' }, icon('lock'), 'این اطلاعات رمزنگاری می‌شود و فقط کارشناس بررسی آن را می‌بیند.'),
-      h('div', { class: 'two-col' }, field('نام و نام خانوادگی', fullName), field('کد ملی', nationalCode))),
-    h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, state.user.hasIdentity ? '۳' : '۴'), 'مدارک'),
+      state.user.hasIdentity ? null : h('div', { class: 'two-col' }, field('نام و نام خانوادگی', fullName), field('کد ملی', nationalCode)),
+      state.user.phone ? null : field('شمارهٔ موبایل برای تماس کارشناس', contactPhone, 'کارشناس برای بررسی درخواست با این شماره تماس می‌گیرد.')),
+    h('section', { class: 'card' }, h('h2', {}, h('span', { class: 'num' }, state.user.hasIdentity && state.user.phone ? '۳' : '۴'), 'مدارک'),
       h('p', { class: 'muted small' }, icon('lock'), ' عکس قبض، کارت ملی، نامهٔ بانک، قرارداد اجاره یا نسخهٔ پزشک. رمزنگاری می‌شود و فقط کارشناس می‌بیند.'),
       fileInput, h('label', { class: 'dropzone', for: 'new-docs' }, icon('upload'), h('strong', {}, 'انتخاب فایل'),
         h('span', { class: 'muted small' }, 'تصویر یا PDF · حداکثر ۶ فایل، هر کدام ۵ مگابایت')), fileList),
@@ -129,9 +132,11 @@ export async function newRequestView(page) {
     if (categories[category].bill) Object.assign(body, { billId: toAscii(billId.value), paymentId: toAscii(paymentId.value) });
     else Object.assign(body, { amountToman: amount.raw(), payee: payee.value });
     if (!state.user.hasIdentity) Object.assign(body, { fullName: fullName.value, nationalCode: toAscii(nationalCode.value) });
+    if (!state.user.phone) body.contactPhone = toAscii(contactPhone.value);
     try {
       const c = await api.post('/api/my/cases', body);
       state.user.hasIdentity = true;
+      if (body.contactPhone) state.user.phone = body.contactPhone;
       let failed = 0;
       for (const [i, f] of files.entries()) {
         toast(`در حال بارگذاری مدرک ${(i + 1).toLocaleString('fa-IR')} از ${files.length.toLocaleString('fa-IR')}…`);

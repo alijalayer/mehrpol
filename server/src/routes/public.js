@@ -11,6 +11,8 @@ export default async function publicRoutes(app, ctx) {
     categories: CATEGORIES,
     provinces: PROVINCES,
     paymentProvider: ctx.payment.name,
+    paymentsOpen: ctx.payment.name !== 'mock' || config.demoMode || config.allowTestPayments,
+    loginChannel: config.loginChannel,
     billPayLive: ctx.billPay.live !== false,
     creator: currentTrust(ctx).creator,
   }));

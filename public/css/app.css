@@ -513,7 +513,14 @@ h2 .num { width: 1.7rem; height: 1.7rem; border-radius: 50%; background: var(--p
 .profile-hero h1 { margin: .3rem 0 0; display: flex; gap: .5rem; align-items: center; }
 .profile-hero .level-progress { max-width: 420px; }
 .profile-hero .hc-stats { max-width: 460px; }
-.segmented.scroll { display: flex; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+/* Tab bars: on phones they slide sideways (finger, wheel or drag) with faded edges hinting at more;
+   on wide screens every tab is visible, wrapping onto a second line if needed. */
+.segmented.scroll { display: flex; overflow-x: auto; max-width: 100%; scrollbar-width: none; scroll-behavior: smooth; overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 18px, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to left, transparent, #000 18px, #000 calc(100% - 18px), transparent); }
+.segmented.scroll::-webkit-scrollbar { display: none; }
+@media (min-width: 700px) {
+  .segmented.scroll { flex-wrap: wrap; overflow: visible; -webkit-mask-image: none; mask-image: none; gap: 2px; }
+}
 .segmented.scroll > * { white-space: nowrap; }
 .perk-list { list-style: none; padding: 0; margin: .5rem 0 0; display: grid; gap: .55rem; }
 .perk { display: flex; gap: .75rem; align-items: flex-start; padding: .75rem; border-radius: 14px; background: var(--surface-2); }
@@ -736,3 +743,6 @@ body::after { content: ''; position: fixed; top: 0; inset-inline: 0; height: var
 .bar-chart { display: flex; align-items: flex-end; gap: .4rem; height: 140px; padding-top: .5rem; }
 .bar-chart div { flex: 1; display: grid; gap: .2rem; align-content: end; text-align: center; font-size: .7rem; color: var(--muted); }
 .bar-chart span { display: block; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, var(--primary), color-mix(in srgb, var(--primary) 55%, var(--surface))); min-height: 3px; }
+
+h2 .num.done { background: var(--success); }
+hr.sep { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }

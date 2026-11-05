@@ -3,9 +3,9 @@ import { unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseBill } from '../bill.js';
 import { CATEGORIES, MAX_AMOUNT, MIN_AMOUNT, PROVINCES, newCaseCode, publicCase } from '../domain.js';
-import { audit, tx } from '../db.js';
+import { audit, getSetting, tx } from '../db.js';
 import { HttpError, requireUser, sniffFile } from '../guards.js';
-import { cleanText, encryptBuffer, encryptText, isValidNationalCode, sha256, toAsciiDigits } from '../security.js';
+import { cleanText, encryptBuffer, encryptText, isValidNationalCode, normalizePhone, sha256, toAsciiDigits } from '../security.js';
 
 const MAX_OPEN_CASES = 3;
 
@@ -51,6 +51,7 @@ export default async function memberRoutes(app, ctx) {
           payee: { type: 'string', maxLength: 300 },
           fullName: { type: 'string', maxLength: 80 },
           nationalCode: { type: 'string', maxLength: 12 },
+          contactPhone: { type: 'string', maxLength: 20 },
         },
       },
     },
@@ -72,6 +73,14 @@ export default async function memberRoutes(app, ctx) {
       if (fullName.length < 5) throw new HttpError(400, 'نام و نام خانوادگی را کامل وارد کنید');
       if (!isValidNationalCode(nationalCode)) throw new HttpError(400, 'کد ملی معتبر نیست');
       identity = [encryptText(config.dataKey, fullName), encryptText(config.dataKey, nationalCode)];
+    }
+
+    // Someone who signed up by email still needs a number the reviewer can call.
+    let contactPhone = null;
+    if (!user.phone) {
+      contactPhone = normalizePhone(b.contactPhone);
+      if (!contactPhone) throw new HttpError(400, 'شمارهٔ موبایل برای تماس کارشناس را وارد کنید');
+      if (db.prepare('SELECT 1 FROM users WHERE phone = ? AND id <> ?').get(contactPhone, user.id)) throw new HttpError(409, 'این شماره به حساب دیگری وصل است؛ با همان حساب وارد شوید');
     }
 
     let amount;
@@ -99,10 +108,12 @@ export default async function memberRoutes(app, ctx) {
     }
     if (amount < MIN_AMOUNT || amount > MAX_AMOUNT) throw new HttpError(400, 'مبلغ باید بین ۱۰ هزار و ۲۰۰ میلیون تومان باشد');
 
-    return tx(db, () => {
+    const created = tx(db, () => {
       const open = db.prepare("SELECT COUNT(*) AS n FROM cases WHERE user_id = ? AND status IN ('pending','approved')").get(user.id);
       if (open.n >= MAX_OPEN_CASES) throw new HttpError(409, `حداکثر ${MAX_OPEN_CASES} درخواست باز می‌توانید داشته باشید`);
       if (identity) db.prepare('UPDATE users SET full_name_enc = ?, national_code_enc = ? WHERE id = ?').run(...identity, user.id);
+      // Not confirmed by SMS yet, so it is marked unverified for the reviewer.
+      if (contactPhone) db.prepare('UPDATE users SET phone = ?, phone_verified = 0 WHERE id = ?').run(contactPhone, user.id);
       const id = randomUUID();
       let code = newCaseCode();
       while (db.prepare('SELECT 1 FROM cases WHERE code = ?').get(code)) code = newCaseCode();
@@ -112,7 +123,23 @@ export default async function memberRoutes(app, ctx) {
       audit(db, user.id, 'case.created', id);
       return ownerView(db.prepare('SELECT * FROM cases WHERE id = ?').get(id));
     });
+    notifyManagers(created);
+    return created;
   });
+
+  /** Emails the admin team about a new request (when email is set up); never delays or fails the request. */
+  function notifyManagers(c) {
+    const mail = getSetting(db, 'mail', null);
+    if (!ctx.mail.configured() || mail?.notify === false) return;
+    const to = db.prepare("SELECT email FROM users WHERE role = 'admin' AND email IS NOT NULL").all().map((r) => r.email);
+    if (!to.length) return;
+    const link = `${config.publicUrl}/#/admin/case/${c.id}`;
+    ctx.mail.send({
+      to,
+      subject: `درخواست تازه در مهرپل: ${c.title}`,
+      text: `یک درخواست کمک تازه ثبت شد و منتظر بررسی است.\n\n${c.title}\nمبلغ: ${(c.amount / 10).toLocaleString('fa-IR')} تومان\n\nبررسی در پنل مدیریت:\n${link}`,
+    }).catch((err) => app.log.warn({ err: err.message }, 'new-request email failed'));
+  }
 
   app.post('/api/my/cases/:id/documents', async (req) => {
     const user = requireUser(req);

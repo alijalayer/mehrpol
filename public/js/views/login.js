@@ -9,23 +9,38 @@ export async function loginView(page) {
 
   const card = h('div', { class: 'card auth-card' });
   page.append(h('div', { class: 'auth-wrap' }, card));
+  // The site signs people in by phone, by email, or lets them choose (set in the admin panel).
+  const channel = state.meta.loginChannel ?? 'phone';
+  let via = channel === 'email' ? 'email' : 'phone';
 
-  const phoneStep = () => {
-    const phone = h('input', { class: 'input', type: 'tel', inputmode: 'numeric', autocomplete: 'tel', dir: 'ltr', placeholder: '09xx xxx xxxx', maxlength: 14, required: true });
+  const addressStep = () => {
+    const phone = h('input', { class: 'input', type: 'tel', inputmode: 'numeric', autocomplete: 'tel', dir: 'ltr', placeholder: '09xx xxx xxxx', maxlength: 14 });
+    const email = h('input', { class: 'input', type: 'email', inputmode: 'email', autocomplete: 'email', dir: 'ltr', placeholder: 'name@example.com', maxlength: 120 });
     const btn = h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'دریافت کد تأیید');
-    // Shown only when the server says this number belongs to a manager (demo mode).
+    // Shown only when the server says this account belongs to a manager (demo mode).
     const adminKey = h('input', { class: 'input', type: 'password', autocomplete: 'off', dir: 'ltr' });
-    const keyField = field('کلید مدیریت', adminKey, 'این شماره مدیر است. کلیدی را که برای مدیران تعیین شده وارد کنید.');
+    const keyField = field('کلید مدیریت', adminKey, 'این حساب مدیر است. کلیدی را که برای مدیران تعیین شده وارد کنید.');
     keyField.hidden = true;
-    const form = h('form', {}, field('شماره موبایل', phone, 'کد تأیید ۶ رقمی برایتان پیامک می‌شود.'), keyField, btn);
+    const phoneField = field('شماره موبایل', phone, 'کد تأیید ۶ رقمی برایتان پیامک می‌شود.');
+    const emailField = field('ایمیل', email, 'کد تأیید ۶ رقمی به ایمیل شما فرستاده می‌شود. پوشهٔ «Spam» را هم نگاه کنید.');
+    const switcher = h('div', { class: 'segmented' });
+    const draw = () => {
+      phoneField.hidden = via !== 'phone';
+      emailField.hidden = via !== 'email';
+      switcher.replaceChildren(...[['phone', 'موبایل'], ['email', 'ایمیل']].map(([k, label]) =>
+        h('button', { type: 'button', class: via === k ? 'active' : '', onclick: () => { via = k; draw(); } }, label)));
+    };
+    draw();
+    const form = h('form', {}, channel === 'both' ? switcher : '', phoneField, emailField, keyField, btn);
     form.onsubmit = (e) => {
       e.preventDefault();
       send();
     };
     const send = busy(btn, async () => {
+      const address = via === 'email' ? { email: email.value.trim() } : { phone: toAscii(phone.value) };
       try {
-        const res = await api.post('/api/auth/otp', { phone: toAscii(phone.value), ...(keyField.hidden ? {} : { adminKey: adminKey.value }) });
-        codeStep(toAscii(phone.value), res);
+        const res = await api.post('/api/auth/otp', { ...address, ...(keyField.hidden ? {} : { adminKey: adminKey.value }) });
+        codeStep(address, res);
       } catch (err) {
         if (err.data?.needsAdminKey) {
           keyField.hidden = false;
@@ -36,10 +51,10 @@ export async function loginView(page) {
     });
     card.replaceChildren(h('div', { class: 'auth-icon' }, icon('user')), h('h1', {}, 'ورود یا ثبت‌نام'),
       h('p', { class: 'muted' }, 'با یک حساب هم می‌توانید کمک کنید و هم درخواست کمک ثبت کنید.'), form);
-    phone.focus();
+    (via === 'email' ? email : phone).focus();
   };
 
-  const codeStep = (phone, res) => {
+  const codeStep = (address, res) => {
     const code = h('input', { class: 'input otp', inputmode: 'numeric', autocomplete: 'one-time-code', dir: 'ltr', maxlength: 6, placeholder: '------' });
     const btn = h('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'ورود');
     let left = res.ttl;
@@ -52,7 +67,7 @@ export async function loginView(page) {
     const form = h('form', {}, field('کد تأیید', code), btn);
     const verify = busy(btn, async () => {
       try {
-        const out = await api.post('/api/auth/verify', { phone, code: toAscii(code.value) });
+        const out = await api.post('/api/auth/verify', { ...address, code: toAscii(code.value) });
         state.user = out.user;
         renderHeader();
         toast('خوش آمدید', 'success');
@@ -70,12 +85,14 @@ export async function loginView(page) {
       code.value = toAscii(code.value).replace(/\D/g, '');
       if (code.value.length === 6) verify();
     });
+    const sentTo = address.email ?? address.phone;
     card.replaceChildren(h('div', { class: 'auth-icon' }, icon('lock')), h('h1', {}, 'کد تأیید'),
-      h('p', { class: 'muted' }, 'کد ارسال‌شده به ', h('span', { dir: 'ltr' }, phone), ' را وارد کنید.'),
+      h('p', { class: 'muted' }, 'کد ارسال‌شده به ', h('span', { dir: 'ltr' }, sentTo), ' را وارد کنید.'),
       res.demoCode ? h('div', { class: 'demo-code' }, 'نسخهٔ نمایشی — کد شما: ', h('strong', { dir: 'ltr' }, res.demoCode)) : '',
-      form, h('div', { class: 'row-between' }, timer, h('button', { class: 'link', onclick: phoneStep }, 'تغییر شماره')));
+      address.email && !res.demoCode ? h('p', { class: 'muted small' }, icon('eye'), ' ایمیل نرسید؟ پوشهٔ Spam یا «تبلیغات» را ببینید.') : '',
+      form, h('div', { class: 'row-between' }, timer, h('button', { class: 'link', onclick: addressStep }, address.email ? 'تغییر ایمیل' : 'تغییر شماره')));
     code.focus();
   };
 
-  phoneStep();
+  addressStep();
 }

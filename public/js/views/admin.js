@@ -15,6 +15,7 @@ const TABS = {
   leads: ['همکاری‌ها', 'house'],
   trust: ['شفافیت و مدارک', 'badge', true],
   app: ['نسخهٔ اندروید', 'android', true],
+  settings: ['تنظیمات سایت', 'settings', true],
 };
 
 /* ---------- Events in plain words ---------- */
@@ -51,6 +52,10 @@ const EVENTS = {
   'circle.renewed': ['donation', 'users', 'عضویت حلقهٔ مهر را فعال یا تمدید کرد'],
   'circle.cancelled': ['donation', 'users', 'عضویت حلقهٔ مهر را لغو کرد'],
   'lead.created': ['user', 'house', 'درخواست همکاری فرستاد'],
+  'user.email.linked': ['user', 'lock', 'ایمیلش را به حساب وصل کرد'],
+  'admin.settings.mail': ['admin', 'settings', 'تنظیمات ایمیل را تغییر داد'],
+  'admin.settings.mode': ['admin', 'settings', 'حالت سایت (نمایشی/واقعی) را تغییر داد'],
+  'admin.settings.demo-cleared': ['admin', 'x', 'داده‌های نمونه را حذف کرد'],
 };
 
 /** "Android · Chrome" style summary of a user agent. */
@@ -110,7 +115,7 @@ export async function adminView(page) {
     h('div', { class: 'segmented scroll' }, visible.map(([k, [label, ic]]) =>
       h('a', { class: tab === k ? 'active' : '', href: `#/admin?tab=${k}` }, icon(ic), ' ', label))),
     body);
-  const views = { overview, requests, users, donations, events, team, revenue, campaigns, leads, trust, app: appRelease };
+  const views = { overview, requests, users, donations, events, team, revenue, campaigns, leads, trust, app: appRelease, settings };
   await views[tab](body, q);
 }
 
@@ -164,7 +169,7 @@ async function requests(body, q) {
 
 async function users(body, q) {
   const term = q.get('q') ?? '';
-  const input = h('input', { class: 'input', inputmode: 'tel', dir: 'ltr', placeholder: 'جست‌وجوی شماره موبایل', value: term });
+  const input = h('input', { class: 'input', dir: 'ltr', placeholder: 'جست‌وجوی موبایل یا ایمیل', value: term });
   const go = h('button', { class: 'btn' }, icon('search'), 'جست‌وجو');
   const search = () => navigate(`/admin?tab=users&q=${encodeURIComponent(input.value.trim())}`);
   go.onclick = search;
@@ -174,11 +179,11 @@ async function users(body, q) {
   if (!items.length) return body.append(emptyState('users', 'کاربری پیدا نشد'));
   body.append(h('p', { class: 'muted small' }, `${fa(items.length)} کاربر · جدیدترین بالا`),
     h('div', { class: 'card table-card' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, ['کاربر', 'موبایل', 'عضویت', 'آخرین ورود', 'درخواست', 'کمک'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['کاربر', 'موبایل / ایمیل', 'عضویت', 'آخرین ورود', 'درخواست', 'کمک'].map((t) => h('th', {}, t)))),
       h('tbody', {}, items.map((u) => h('tr', {},
         h('td', {}, h('a', { href: `#/admin/user/${u.id}` }, u.fullName || u.displayName || 'بدون نام'),
           u.role === 'admin' ? h('span', { class: 'pill pill-info' }, 'مدیر') : null, u.isDemo ? h('span', { class: 'pill pill-muted' }, 'نمونه') : null),
-        h('td', { dir: 'ltr', class: 'mono' }, u.phone),
+        h('td', { dir: 'ltr', class: 'mono' }, u.phone ?? u.email),
         h('td', {}, faDate(u.createdAt)),
         h('td', {}, u.lastLoginAt ? ago(u.lastLoginAt) : '—'),
         h('td', {}, fa(u.cases)),
@@ -192,7 +197,7 @@ export async function adminUserView(page, id) {
     h('div', { class: 'card' },
       h('h1', {}, u.fullName || u.displayName || 'کاربر بدون نام', u.role === 'admin' ? h('span', { class: 'pill pill-info' }, 'مدیر') : null),
       h('h2', {}, icon('lock'), 'مشخصات (محرمانه)'),
-      kv('نام و نام خانوادگی', u.fullName), kv('کد ملی', u.nationalCode, true), kv('موبایل', u.phone, true), kv('نام نمایشی', u.displayName),
+      kv('نام و نام خانوادگی', u.fullName), kv('کد ملی', u.nationalCode, true), kv('موبایل', u.phone ? `${u.phone}${u.phoneVerified ? '' : ' (تأییدنشده)'}` : '', true), kv('ایمیل', u.email, true), kv('نام نمایشی', u.displayName),
       kv('عضویت از', faDateTime(u.createdAt)), kv('آخرین ورود', u.lastLoginAt ? faDateTime(u.lastLoginAt) : ''),
       kv('پروفایل عمومی', u.publicProfile ? 'نمایش در تالار افتخار' : 'خصوصی'),
       u.bio ? kv('دربارهٔ من', u.bio) : null),
@@ -675,4 +680,120 @@ async function leads(body) {
         h('td', {}, l.contact, h('div', { class: 'small', dir: 'ltr' }, l.phone), l.email ? h('div', { class: 'small', dir: 'ltr' }, l.email) : null),
         h('td', {}, l.plan || '—'), h('td', { class: 'wrap' }, l.message || '—'), h('td', {}, status));
     })))));
+}
+
+/* ---------- Site settings: email, real mode, sample data ---------- */
+
+const CHANNELS = { email: 'فقط با ایمیل', phone: 'فقط با پیامک', both: 'هر دو (کاربر انتخاب می‌کند)' };
+
+async function settings(body) {
+  const s = await api.get('/api/admin/settings');
+  const m = s.mail;
+
+  // 1. Email
+  const host = h('input', { class: 'input', dir: 'ltr', value: m.host, placeholder: 'smtp.gmail.com' });
+  const port = h('input', { class: 'input', dir: 'ltr', inputmode: 'numeric', value: String(m.port) });
+  const secure = h('input', { type: 'checkbox', checked: m.secure });
+  const user = h('input', { class: 'input', dir: 'ltr', value: m.user, placeholder: 'you@gmail.com', autocomplete: 'off' });
+  const password = h('input', { class: 'input', dir: 'ltr', type: 'password', autocomplete: 'new-password', placeholder: m.hasPassword ? '•••••••• (ذخیره شده؛ برای تغییر بنویسید)' : 'رمز برنامه (App Password)' });
+  const fromName = h('input', { class: 'input', value: m.fromName });
+  const fromAddress = h('input', { class: 'input', dir: 'ltr', value: m.fromAddress, placeholder: 'you@gmail.com' });
+  const notify = h('input', { type: 'checkbox', checked: m.notify });
+  const preset = h('button', { class: 'btn btn-sm', type: 'button' }, 'پر کردن برای Gmail');
+  preset.onclick = () => {
+    host.value = 'smtp.gmail.com';
+    port.value = '465';
+    secure.checked = true;
+    if (!fromAddress.value) fromAddress.value = user.value;
+  };
+  const saveMail = h('button', { class: 'btn btn-primary' }, icon('check'), 'ذخیرهٔ تنظیمات ایمیل');
+  saveMail.onclick = busy(saveMail, async () => {
+    try {
+      await api.put('/api/admin/settings/mail', {
+        host: host.value.trim(), port: Number(toAscii(port.value)) || 465, secure: secure.checked, user: user.value.trim(),
+        password: password.value, fromName: fromName.value, fromAddress: fromAddress.value.trim(), notify: notify.checked,
+      });
+      password.value = '';
+      toast('ذخیره شد؛ حالا ایمیل آزمایشی بفرستید', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  const testTo = h('input', { class: 'input', dir: 'ltr', type: 'email', value: state.user.email ?? '', placeholder: 'ایمیلی که آزمایش به آن برود' });
+  const test = h('button', { class: 'btn' }, icon('upload'), 'ارسال ایمیل آزمایشی');
+  test.onclick = busy(test, async () => {
+    try {
+      const r = await api.post('/api/admin/settings/mail/test', { to: testTo.value.trim() });
+      toast(`ایمیل آزمایشی به ${r.to} رفت؛ صندوق و Spam را ببینید`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  // 2. Real mode
+  const channel = h('select', { class: 'input' }, Object.entries(CHANNELS).map(([k, label]) => h('option', { value: k, selected: s.mode.channel === k }, label)));
+  const live = s.mode.live;
+  const toggle = h('button', { class: `btn ${live ? 'btn-danger-ghost' : 'btn-primary'}` }, icon(live ? 'eye' : 'check'), live ? 'برگشت به حالت نمایشی' : 'روشن کردن حالت واقعی');
+  toggle.onclick = busy(toggle, async () => {
+    const goLive = !live;
+    if (goLive && !confirm('حالت واقعی روشن شود؟ کد ورود دیگر روی صفحه نمایش داده نمی‌شود و نوار «نسخهٔ نمایشی» برداشته می‌شود.')) return;
+    try {
+      await api.put('/api/admin/settings/mode', { live: goLive, channel: channel.value });
+      toast(goLive ? 'حالت واقعی روشن شد' : 'به حالت نمایشی برگشت', 'success');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+  const saveChannel = h('button', { class: 'btn btn-sm' }, 'ذخیرهٔ روش ورود');
+  saveChannel.onclick = busy(saveChannel, async () => {
+    try {
+      await api.put('/api/admin/settings/mode', { live, channel: channel.value });
+      toast('روش ورود ذخیره شد', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  // 3. Sample data
+  const clear = h('button', { class: 'btn btn-danger-ghost' }, icon('x'), 'حذف داده‌های نمونه');
+  clear.onclick = busy(clear, async () => {
+    if (!confirm(`${fa(s.demoRows.cases)} پرونده و ${fa(s.demoRows.users)} خیّر نمونه برای همیشه حذف شوند؟ دادهٔ واقعی دست نمی‌خورد.`)) return;
+    try {
+      const r = await api.post('/api/admin/settings/clear-demo');
+      toast(`${fa(r.cases)} پرونده و ${fa(r.users)} کاربر نمونه حذف شد`, 'success');
+      navigate(`/admin?tab=settings&t=${Date.now()}`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  const step = (n, done) => h('span', { class: `num ${done ? 'done' : ''}` }, done ? icon('check') : fa(n));
+  body.append(
+    h('section', { class: `card ${live ? 'circle-status on' : ''}` },
+      h('h2', {}, icon(live ? 'check' : 'eye'), live ? 'مهرپل در حالت واقعی است' : 'مهرپل در حالت نمایشی است'),
+      h('p', { class: 'muted' }, live
+        ? `ثبت‌نام‌ها و درخواست‌ها واقعی‌اند. روش ورود: ${CHANNELS[s.mode.channel]}. ${s.payment === 'mock' ? 'پرداخت آنلاین تا وصل شدن درگاه بانک بسته است.' : ''}`
+        : 'کد ورود روی صفحه نمایش داده می‌شود و پرداخت‌ها آزمایشی‌اند. برای ثبت‌نام واقعی، سه مرحلهٔ زیر را انجام دهید.')),
+    h('section', { class: 'card' }, h('h2', {}, step(1, m.fromAddress && m.hasPassword), ' ایمیل فرستنده'),
+      h('p', { class: 'muted small' }, 'ساده‌ترین راه: یک حساب Gmail. در تنظیمات امنیتی گوگل «تأیید دومرحله‌ای» را روشن کنید، بعد از بخش «App passwords» یک رمز ۱۶ حرفی بسازید و همین‌جا وارد کنید. رمز رمزنگاری‌شده ذخیره می‌شود و دیگر نمایش داده نمی‌شود.'),
+      preset,
+      h('div', { class: 'two-col' }, field('سرور SMTP', host), field('پورت', port), field('نام کاربری', user), field('رمز', password),
+        field('نام فرستنده', fromName), field('ایمیل فرستنده', fromAddress)),
+      h('label', { class: 'check' }, secure, 'اتصال امن (SSL) — برای پورت ۴۶۵ روشن بماند'),
+      h('label', { class: 'check' }, notify, 'برای هر درخواست تازه به ایمیل مدیران خبر بده'),
+      h('div', { class: 'row-gap' }, saveMail), h('hr', { class: 'sep' }),
+      field('ارسال آزمایشی به', testTo), test),
+    h('section', { class: 'card' }, h('h2', {}, step(2, Boolean(state.user.email)), ' ایمیل خودتان'),
+      state.user.email
+        ? h('p', {}, 'ایمیل شما وصل است: ', h('strong', { dir: 'ltr' }, state.user.email))
+        : h('p', { class: 'muted' }, 'از «حساب من ← تنظیمات» ایمیل خودتان را وصل کنید تا بعد از روشن کردن حالت واقعی بتوانید با ایمیل وارد شوید.'),
+      state.user.email ? null : h('a', { class: 'btn', href: '#/me?tab=settings' }, icon('user'), 'رفتن به تنظیمات حساب')),
+    h('section', { class: 'card' }, h('h2', {}, step(3, live), ' حالت واقعی'),
+      field('کاربران چطور وارد شوند؟', channel, 'تا پنل پیامک وصل نشده، «فقط با ایمیل» را انتخاب کنید.'),
+      h('div', { class: 'row-gap' }, toggle, live ? saveChannel : null)),
+    h('section', { class: 'card' }, h('h2', {}, icon('x'), 'داده‌های نمونه'),
+      s.demoRows.cases || s.demoRows.users
+        ? [h('p', { class: 'muted' }, `${fa(s.demoRows.cases)} پرونده و ${fa(s.demoRows.users)} خیّر نمونه (با برچسب «نمونه») در سایت هست. پیش از معرفی واقعی حذفشان کنید.`), clear]
+        : h('p', { class: 'muted' }, 'داده‌ی نمونه‌ای باقی نمانده است.')));
 }

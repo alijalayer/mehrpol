@@ -1,7 +1,7 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate } from '../app.js';
 import { CATEGORY_ICONS, busy, emptyState, fa, h, icon, moneyInput, progress, relTime, skeletonCards, toAscii, toast, toman } from '../ui.js';
-import { revenueConfig, tipPicker } from './giving.js';
+import { paymentsSoon, revenueConfig, tipPicker } from './giving.js';
 
 export function caseCard(c) {
   const cat = state.meta.categories[c.category];
@@ -98,6 +98,7 @@ function doneBox(c) {
 }
 
 function donateForm(c, remaining) {
+  if (!state.meta.paymentsOpen) return paymentsSoon();
   const remainingToman = Math.round(remaining / 10);
   const amount = moneyInput({ placeholder: 'مبلغ دلخواه به تومان', 'aria-label': 'مبلغ کمک به تومان' });
   const presets = [50_000, 100_000, 200_000, 500_000].filter((v) => v < remainingToman);

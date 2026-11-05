@@ -27,7 +27,7 @@ before(async () => {
   const config = loadConfig({
     skipDotEnv: true,
     dataDir,
-    env: { NODE_ENV: 'test', DEMO_MODE: 'false', ADMIN_PHONES: '09120000001', PUBLIC_URL: 'http://localhost:3000' },
+    env: { NODE_ENV: 'test', DEMO_MODE: 'false', ADMIN_PHONES: '09120000001', PUBLIC_URL: 'http://localhost:3000', ALLOW_TEST_PAYMENTS: 'true' },
   });
   app = await buildApp({ config, logger: false, sms: { name: 'test', sendOtp: async (p, c) => sentCodes.set(p, c) } });
 });
@@ -433,5 +433,81 @@ describe('demo mode keeps the admin panel locked', () => {
     assert.equal(wrong.statusCode, 403);
     const right = await demo.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09120000001', adminKey: 'k-7f3a91' } });
     assert.ok(right.json().demoCode);
+  });
+});
+
+describe('real mode with email sign-in', () => {
+  let live;
+  const dir = mkdtempSync(join(tmpdir(), 'mehrpol-live-'));
+  const mails = [];
+  const codeFrom = (to) => [...mails].reverse().find((m) => [].concat(m.to).includes(to))?.text.match(/\d{6}/)?.[0];
+  const signIn = async (body) => {
+    const r1 = await live.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: body });
+    assert.equal(r1.statusCode, 200, r1.body);
+    if (body.email && !live.ctx.config.demoMode) assert.equal(r1.json().demoCode, undefined, 'real mode never shows the code');
+    const code = body.email ? codeFrom(body.email) : sentCodes.get(body.phone);
+    const r2 = await live.inject({ method: 'POST', url: '/api/auth/verify', headers: H, payload: { ...body, code } });
+    assert.equal(r2.statusCode, 200, r2.body);
+    return { ...H, cookie: `sid=${r2.cookies.find((c) => c.name === 'sid').value}` };
+  };
+  let owner;
+
+  before(async () => {
+    const config = loadConfig({ skipDotEnv: true, dataDir: dir, env: { NODE_ENV: 'test', DEMO_MODE: 'true', ADMIN_PHONES: '09120000009', PUBLIC_URL: 'http://localhost:3000' } });
+    live = await buildApp({
+      config, logger: false,
+      sms: { name: 'test', sendOtp: async (p, c) => sentCodes.set(p, c) },
+      mailer: { configured: () => true, send: async (m) => mails.push(m) },
+    });
+  });
+  after(async () => {
+    await live.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('switching to email-only sign-in is refused until the owner has linked an email', async () => {
+    // Demo mode: the founder (phone) signs in with the manager key flow disabled because no key is set,
+    // so use the phone channel while it is still allowed.
+    const r = await live.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09120000009' } });
+    assert.equal(r.statusCode, 403, 'admins get no on-screen code without a manager key');
+    // Real mode on phone, then the founder signs in with the code that went "by SMS".
+    live.ctx.config.demoMode = false;
+    owner = await signIn({ phone: '09120000009' });
+    const refused = await live.inject({ method: 'PUT', url: '/api/admin/settings/mode', headers: owner, payload: { live: true, channel: 'email' } });
+    assert.equal(refused.statusCode, 409);
+    const link = await live.inject({ method: 'POST', url: '/api/my/email', headers: owner, payload: { email: 'Owner@Example.com' } });
+    assert.equal(link.statusCode, 200, link.body);
+    const ok = await live.inject({ method: 'POST', url: '/api/my/email/verify', headers: owner, payload: { email: 'owner@example.com', code: codeFrom('owner@example.com') } });
+    assert.equal(ok.json().email, 'owner@example.com');
+    const on = await live.inject({ method: 'PUT', url: '/api/admin/settings/mode', headers: owner, payload: { live: true, channel: 'email' } });
+    assert.equal(on.statusCode, 200, on.body);
+    assert.equal((await live.inject({ method: 'GET', url: '/api/meta' })).json().loginChannel, 'email');
+  });
+
+  test('a real person signs up by email, the code is mailed (not shown), and phone sign-in is closed', async () => {
+    assert.equal((await live.inject({ method: 'POST', url: '/api/auth/otp', headers: H, payload: { phone: '09125550001' } })).statusCode, 400);
+    const maryam = await signIn({ email: 'maryam@example.com' });
+    const me = (await live.inject({ method: 'GET', url: '/api/me', headers: maryam })).json().user;
+    assert.equal(me.email, 'maryam@example.com');
+    assert.equal(me.phone, null);
+
+    // Her request needs a contact number; the admin team gets an email about it.
+    const bill = makeBill('3579135', 3, 1_500_000);
+    const base = { category: 'gas', title: 'قبض گاز زمستان', story: 'توضیح کامل وضعیت خانواده برای بررسی کارشناس و خیّرین عزیز.', province: 'تهران', billId: bill.billId, paymentId: bill.paymentId, fullName: 'مریم نمونه', nationalCode: '0499370899' };
+    assert.equal((await live.inject({ method: 'POST', url: '/api/my/cases', headers: maryam, payload: base })).statusCode, 400);
+    const before = mails.length;
+    const c = await live.inject({ method: 'POST', url: '/api/my/cases', headers: maryam, payload: { ...base, contactPhone: '09125550001' } });
+    assert.equal(c.statusCode, 200, c.body);
+    await new Promise((r2) => setTimeout(r2, 20));
+    assert.ok(mails.slice(before).some((m) => [].concat(m.to).includes('owner@example.com') && m.subject.includes('درخواست تازه')));
+    const users = (await live.inject({ method: 'GET', url: '/api/admin/users?q=maryam', headers: owner })).json();
+    assert.equal(users.items[0].fullName, 'مریم نمونه');
+  });
+
+  test('real mode closes the test payment gateway', async () => {
+    const donor = await signIn({ email: 'donor@example.com' });
+    const r = await live.inject({ method: 'POST', url: '/api/donations', headers: donor, payload: { amountToman: '50000' } });
+    assert.equal(r.statusCode, 503);
+    assert.equal((await live.inject({ method: 'GET', url: '/api/meta' })).json().paymentsOpen, false);
   });
 });
