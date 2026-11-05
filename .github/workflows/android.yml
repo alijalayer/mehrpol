@@ -1,6 +1,7 @@
 name: android
 # Builds the Android app. Run it from the Actions tab → android → Run workflow,
-# enter your server address, then download the APK from the run's Artifacts.
+# enter your server address, then download the APK from the run's Artifacts
+# (or tick "release" to also publish it on the Releases page for easy install).
 on:
   workflow_dispatch:
     inputs:
@@ -51,3 +52,14 @@ jobs:
         with:
           name: mehrpol-android-${{ inputs.version_name }}
           path: android/app/build/outputs/apk/**/*.apk
+      - name: Publish on the Releases page
+        if: inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version_name }}
+          SERVER_URL: ${{ inputs.server_url }}
+        run: |
+          cp "$(find android/app/build/outputs/apk -name '*.apk' | head -1)" "mehrpol-$VERSION.apk"
+          gh release create "v$VERSION" "mehrpol-$VERSION.apk" --prerelease --target "$GITHUB_SHA"             --title "مهرپل $VERSION (نسخهٔ آزمایشی)"             --notes "نسخهٔ آزمایشی اندروید. این نسخه به سرور $SERVER_URL وصل می‌شود.
+
+          نصب: فایل mehrpol-$VERSION.apk را روی گوشی دانلود کنید، بازش کنید و اجازهٔ «نصب از منابع ناشناس» را بدهید."
