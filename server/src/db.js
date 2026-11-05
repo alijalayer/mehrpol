@@ -80,6 +80,18 @@ CREATE TABLE IF NOT EXISTS donations (
 );
 CREATE INDEX IF NOT EXISTS donations_donor ON donations(donor_id, created_at);
 
+CREATE TABLE IF NOT EXISTS certificates (
+  code TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  level TEXT NOT NULL,
+  name TEXT NOT NULL,
+  total_toman INTEGER NOT NULL,
+  cases INTEGER NOT NULL,
+  issued_at INTEGER NOT NULL,
+  revoked INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS certificates_user ON certificates(user_id, issued_at);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor_id TEXT,
@@ -90,9 +102,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 `;
 
+/** Columns added after the first release; ALTER TABLE runs only when a column is missing. */
+const ADDED_COLUMNS = [
+  ['users', 'public_profile', 'INTEGER NOT NULL DEFAULT 0'],
+  ['users', 'slug', 'TEXT'],
+  ['users', 'bio', "TEXT NOT NULL DEFAULT ''"],
+  ['users', 'is_demo', 'INTEGER NOT NULL DEFAULT 0'],
+  ['donations', 'closed_case', 'INTEGER NOT NULL DEFAULT 0'],
+];
+
 export function openDb(file) {
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  for (const [table, column, type] of ADDED_COLUMNS) {
+    const exists = db.prepare(`SELECT 1 FROM pragma_table_info('${table}') WHERE name = ?`).get(column);
+    if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_slug ON users(slug) WHERE slug IS NOT NULL');
   return db;
 }
 

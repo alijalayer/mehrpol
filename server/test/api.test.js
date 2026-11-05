@@ -184,4 +184,53 @@ describe('full flow', () => {
     const stats = await app.inject({ method: 'GET', url: '/api/stats' });
     assert.equal(stats.json().paidTotal, 2_000_000);
   });
+
+  test('donor earns level and medals from verified donations only', async () => {
+    const p = (await app.inject({ method: 'GET', url: '/api/my/profile', headers: donor })).json();
+    assert.equal(p.level.current.id, 'supporter');
+    const earned = p.medals.filter((m) => m.earned).map((m) => m.id);
+    assert.ok(earned.includes('first-step') && earned.includes('closer') && earned.includes('pioneer'));
+    assert.ok(!earned.includes('big-heart'));
+    assert.equal(p.stats.donations, 1, 'the failed donation does not count');
+    assert.equal(p.canCertify, false);
+  });
+
+  test('certificate requires bronze level', async () => {
+    await app.inject({ method: 'PATCH', url: '/api/my/profile', headers: donor, payload: { displayName: 'خیّر آزمایشی' } });
+    const r = await app.inject({ method: 'POST', url: '/api/my/certificate', headers: donor });
+    assert.equal(r.statusCode, 403);
+    const fake = await app.inject({ method: 'GET', url: '/api/certificates/MPAAAAAAAAAA' });
+    assert.equal(fake.statusCode, 404);
+  });
+
+  test('bronze donor gets a verifiable certificate', async () => {
+    const { db } = app.ctx;
+    const donorId = db.prepare("SELECT id FROM users WHERE phone = '09126666666'").get().id;
+    const caseRow = db.prepare('SELECT id FROM cases LIMIT 1').get();
+    for (let i = 0; i < 5; i++) {
+      db.prepare(`INSERT INTO donations (id, case_id, donor_id, amount, applied, status, gateway, created_at, verified_at)
+        VALUES (?, ?, ?, 2000000, 2000000, 'succeeded', 'mock', ?, ?)`).run(`00000000-0000-4000-8000-00000000000${i}`, caseRow.id, donorId, Date.now(), Date.now());
+    }
+    const r = await app.inject({ method: 'POST', url: '/api/my/certificate', headers: donor });
+    assert.equal(r.statusCode, 200, r.body);
+    const cert = (await app.inject({ method: 'GET', url: `/api/certificates/${r.json().code}` })).json();
+    assert.equal(cert.valid, true);
+    assert.equal(cert.level.id, 'bronze');
+    assert.equal(cert.name, 'خیّر آزمایشی');
+    const again = await app.inject({ method: 'POST', url: '/api/my/certificate', headers: donor });
+    assert.equal(again.json().code, r.json().code, 'same level and name reuse the certificate');
+  });
+
+  test('honor wall shows only opted-in donors and never amounts or phones', async () => {
+    let wall = (await app.inject({ method: 'GET', url: '/api/honor' })).json();
+    assert.equal(wall.items.length, 0);
+    await app.inject({ method: 'PATCH', url: '/api/my/profile', headers: donor, payload: { publicProfile: true } });
+    const res = await app.inject({ method: 'GET', url: '/api/honor' });
+    wall = res.json();
+    assert.equal(wall.items.length, 1);
+    assert.equal(wall.items[0].displayName, 'خیّر آزمایشی');
+    assert.ok(!res.body.includes('09126666666') && !res.body.includes('totalToman'));
+    const one = await app.inject({ method: 'GET', url: `/api/donors/${wall.items[0].slug}` });
+    assert.equal(one.statusCode, 200);
+  });
 });

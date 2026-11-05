@@ -12,15 +12,15 @@ if (!config.demoMode) {
   process.exit(1);
 }
 const db = openDb(config.dbFile);
-if (db.prepare('SELECT COUNT(*) AS n FROM cases WHERE is_demo = 1').get().n > 0) {
-  console.log('Demo data already present.');
-  process.exit(0);
-}
+const day = 86400_000;
+if (db.prepare('SELECT COUNT(*) AS n FROM cases WHERE is_demo = 1').get().n === 0) seedCases();
+if (db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_demo = 1 AND public_profile = 1').get().n === 0) seedDonors();
+console.log('Demo data ready.');
 
+function seedCases() {
 const owner = randomUUID();
 db.prepare("INSERT INTO users (id, phone, role, display_name, created_at) VALUES (?, '09000000000', 'member', 'نمونه', ?)").run(owner, Date.now());
 
-const day = 86400_000;
 const samples = [
   ['electricity', 2, 'قبض برق زمستان', 'مادری با دو فرزند دانش‌آموز که هزینهٔ گرمایش برقی در زمستان از توانش خارج شده است. (نمونهٔ نمایشی)', 'خراسان رضوی', 1_870_000, 'approved', 0.4],
   ['gas', 3, 'قبض گاز دو ماه', 'پدر خانواده به‌دلیل بیماری چند ماهی است کار نمی‌کند و قبض گاز معوق شده است. (نمونهٔ نمایشی)', 'آذربایجان شرقی', 2_430_000, 'approved', 0.15],
@@ -45,3 +45,30 @@ for (const [category, serviceDigit, title, story, province, toman, status, ratio
   i++;
 }
 console.log(`Seeded ${samples.length} demo cases.`);
+}
+
+/** Sample donors for the honor wall. Their donations point at the sample cases only. */
+function seedDonors() {
+  const cases = db.prepare('SELECT id FROM cases WHERE is_demo = 1 ORDER BY created_at').all();
+  const donors = [
+    ['مهرآفرین نمونه ۱', 'هر ماه سهم کوچکی کنار می‌گذارم. (نمونه)', 240_000_000, 160, 7],
+    ['مهرآفرین نمونه ۲', 'به یاد مادربزرگم که همیشه دست‌گیر بود. (نمونه)', 62_000_000, 55, 6],
+    ['مهرآفرین نمونه ۳', '', 14_000_000, 24, 5],
+    ['مهرآفرین نمونه ۴', 'گرمای خانهٔ هم‌وطن، گرمای دل من است. (نمونه)', 3_200_000, 8, 4],
+    ['مهرآفرین نمونه ۵', '', 600_000, 2, 2],
+  ];
+  const ins = db.prepare(`INSERT INTO donations (id, case_id, donor_id, amount, applied, closed_case, status, gateway, authority, ref_id, anonymous, created_at, verified_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'succeeded', 'demo', NULL, ?, 1, ?, ?)`);
+  donors.forEach(([name, bio, totalToman, count, spread], n) => {
+    const id = randomUUID();
+    db.prepare(`INSERT INTO users (id, phone, role, display_name, bio, public_profile, slug, is_demo, created_at)
+      VALUES (?, ?, 'member', ?, ?, 1, ?, 1, ?)`).run(id, `0900000000${n + 1}`, name, bio, `demo000${n + 1}`, Date.now() - 400 * day);
+    const each = Math.round((totalToman * 10) / count / 10000) * 10000;
+    for (let k = 0; k < count; k++) {
+      // Spread donations over past months (for the streak medal) and across sample cases.
+      const at = Date.now() - (k * 9 + n) * day;
+      ins.run(randomUUID(), cases[k % spread].id, id, each, each, k < count / 6 ? 1 : 0, `DEMO-${n}${k}`, at, at);
+    }
+  });
+  console.log(`Seeded ${donors.length} demo donors.`);
+}

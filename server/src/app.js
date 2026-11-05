@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.js';
 import memberRoutes from './routes/member.js';
 import donationRoutes from './routes/donations.js';
 import adminRoutes from './routes/admin.js';
+import rewardRoutes from './routes/rewards.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -119,6 +120,7 @@ export async function buildApp(options = {}) {
   await app.register(memberRoutes, ctx);
   await app.register(donationRoutes, ctx);
   await app.register(adminRoutes, ctx);
+  await app.register(rewardRoutes, ctx);
 
   await app.register(fastifyStatic, {
     root: join(ROOT, 'public'),

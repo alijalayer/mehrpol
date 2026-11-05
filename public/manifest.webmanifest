@@ -1,11 +1,24 @@
 {
+  "id": "/",
   "name": "مهرپل — پرداخت قبض نیازمندان",
   "short_name": "مهرپل",
+  "description": "پرداخت مستقیم قبض و بدهی خانواده‌های نیازمند توسط خیّرین",
   "lang": "fa",
   "dir": "rtl",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f5f0",
+  "orientation": "portrait",
+  "background_color": "#fbf6ee",
   "theme_color": "#0f6e5c",
-  "icons": [{ "src": "/icons/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "categories": ["finance", "lifestyle", "social"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "کمک می‌کنم", "url": "/#/cases", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "درخواست کمک", "url": "/#/new", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
 }

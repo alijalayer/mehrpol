@@ -12,7 +12,10 @@
     "start": "node server/src/server.js",
     "dev": "node --watch server/src/server.js",
     "seed:demo": "node server/scripts/seed-demo.js",
-    "test": "node --test \"server/test/*.test.js\""
+    "test": "node --test \"server/test/*.test.js\"",
+    "icons": "node scripts/make-icons.js",
+    "android:url": "node scripts/android-config.js",
+    "android:sync": "npx cap sync android"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
@@ -21,6 +24,12 @@
     "fastify": "^5.12.8"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
+    "sharp": "^0.35.5",
     "vazirmatn": "^33.0.3"
   }
 }

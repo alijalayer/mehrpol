@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">مهرپل</string>
+    <string name="title_activity_main">مهرپل</string>
+    <string name="package_name">ir.mehrpol.app</string>
+    <string name="custom_url_scheme">ir.mehrpol.app</string>
+</resources>
