@@ -148,6 +148,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .avatar-lg { width: 52px; height: 52px; font-size: 1.4rem; }
 
 main { max-width: var(--max); margin: 0 auto; padding: 1.25rem 1rem 6.5rem; outline: none; }
+main:focus, main:focus-visible { outline: none; } /* focused only to move screen readers to the new page */
 .page { animation: rise .28s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
