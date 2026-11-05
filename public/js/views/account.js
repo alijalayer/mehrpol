@@ -1,7 +1,8 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate, renderHeader } from '../app.js';
-import { CATEGORY_ICONS, busy, emptyState, fa, faDate, field, h, icon, progress, relTime, toast, toman } from '../ui.js';
+import { CATEGORY_ICONS, busy, emptyState, fa, faDate, field, h, icon, progress, relTime, toast, toman, tomanShort } from '../ui.js';
 import { avatar, levelBadge, levelProgress, medal } from '../rewards-ui.js';
+import { downloadButton, installedVersion, latestRelease } from '../update.js';
 
 export const STATUS = {
   pending: ['در انتظار بررسی', 'pill-warn'],
@@ -27,7 +28,7 @@ export async function accountView(page) {
       levelBadge(p.level.current),
       p.bio ? h('p', { class: 'muted' }, p.bio) : null,
       h('div', { class: 'hc-stats' },
-        h('div', {}, h('strong', {}, toman(p.stats.totalToman * 10)), h('span', {}, 'مجموع کمک')),
+        h('div', {}, h('strong', {}, p.stats.totalToman ? tomanShort(p.stats.totalToman * 10) : '۰'), h('span', {}, 'تومان کمک')),
         h('div', {}, h('strong', {}, fa(p.stats.cases)), h('span', {}, 'خانواده')),
         h('div', {}, h('strong', {}, fa(p.medals.filter((m) => m.earned).length)), h('span', {}, 'مدال'))),
       levelProgress(p.level),
@@ -107,7 +108,36 @@ function settingsTab(body, p) {
     field('دربارهٔ من', bio),
     h('label', { class: 'check' }, pub, 'نمایش پروفایل من در تالار افتخار (بدون مبلغ و شمارهٔ تلفن)'),
     p.slug ? h('p', {}, h('a', { class: 'small', href: `#/donor/${p.slug}` }, 'مشاهدهٔ پروفایل عمومی من')) : null,
-    h('div', { class: 'row-gap' }, save, logout)));
+    h('div', { class: 'row-gap' }, save, logout)),
+  themeCard());
+  appCard().then((card) => card && body.append(card));
+}
+
+/** Day / night / follow-the-device choice. */
+function themeCard() {
+  const choices = { auto: ['خودکار', 'settings'], light: ['روز', 'sun'], dark: ['شب', 'moon'] };
+  const group = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'ظاهر برنامه' });
+  const draw = () => group.replaceChildren(...Object.entries(choices).map(([k, [label, ic]]) => {
+    const active = window.mehrpolTheme.choice() === k;
+    return h('button', { type: 'button', role: 'radio', 'aria-checked': String(active), class: active ? 'active' : '', onclick: () => {
+      window.mehrpolTheme.set(k);
+      draw();
+    } }, icon(ic), ' ', label);
+  }));
+  draw();
+  return h('section', { class: 'card' }, h('h2', {}, icon('sun'), 'ظاهر برنامه'),
+    h('p', { class: 'muted small' }, '«خودکار» از تنظیم روز و شب گوشی یا کامپیوتر شما پیروی می‌کند.'), group);
+}
+
+/** Version info and update button, only inside the Android app. */
+async function appCard() {
+  const current = installedVersion();
+  if (current === null) return null;
+  const r = await latestRelease();
+  const newer = r.available && r.versionCode > current;
+  return h('section', { class: 'card' }, h('h2', {}, icon('android'), 'نسخهٔ برنامه'),
+    h('p', { class: 'muted small' }, newer ? `نسخهٔ ${fa(r.version)} منتشر شده است.` : 'از آخرین نسخه استفاده می‌کنید.'),
+    newer ? downloadButton(r) : null);
 }
 
 async function requestsTab(body) {

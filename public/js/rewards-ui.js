@@ -65,7 +65,7 @@ export function profileMenu(onLogout) {
           h('a', { class: 'menu-link', href: '#/me?tab=donations' }, icon('receipt'), 'کمک‌های من'),
           h('a', { class: 'menu-link', href: '#/me?tab=requests' }, icon('file'), 'درخواست‌های من'),
           h('a', { class: 'menu-link', href: '#/honor' }, icon('trophy'), 'تالار افتخار'),
-          state.user.role === 'admin' ? h('a', { class: 'menu-link', href: '#/admin' }, icon('shield'), 'پنل بررسی') : null,
+          state.user.role === 'admin' ? h('a', { class: 'menu-link', href: '#/admin' }, icon('shield'), 'پنل مدیریت') : null,
           logout));
     } catch {
       loaded = false;
@@ -84,7 +84,8 @@ export function profileMenu(onLogout) {
   const hoverable = matchMedia('(hover: hover)').matches;
   if (hoverable) {
     wrap.addEventListener('mouseenter', open);
-    wrap.addEventListener('mouseleave', () => (closeTimer = setTimeout(close, 180)));
+    // A generous delay so a brief slip of the pointer off the card does not close it.
+    wrap.addEventListener('mouseleave', () => (closeTimer = setTimeout(close, 450)));
   }
   trigger.addEventListener('click', () => (wrap.classList.contains('open') ? close() : open()));
   document.addEventListener('click', (e) => !wrap.contains(e.target) && close());

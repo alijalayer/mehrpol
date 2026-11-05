@@ -72,6 +72,9 @@ export default async function authRoutes(app, ctx) {
       db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, user.id);
     }
     user = db.prepare('SELECT *, full_name_enc IS NOT NULL AS has_identity FROM users WHERE phone = ?').get(phone);
+    // Shown to the admin as "who signed in, when, from where".
+    db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(Date.now(), user.id);
+    audit(db, user.id, 'user.login', null, { ip: req.ip, device: String(req.headers['user-agent'] ?? '').slice(0, 160) });
 
     const token = newToken();
     const maxAge = config.sessionDays * 86400;

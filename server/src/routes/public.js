@@ -1,42 +1,9 @@
 import { CATEGORIES, PROVINCES, publicCase } from '../domain.js';
 import { HttpError } from '../guards.js';
-
-const isHttpUrl = (v) => {
-  try {
-    return ['https:', 'http:'].includes(new URL(v).protocol);
-  } catch {
-    return false;
-  }
-};
-
-/** Keeps only safe, display-ready fields from config/trust.json. */
-function sanitizeTrust(trust, demoMode) {
-  const text = (v) => (typeof v === 'string' ? v.slice(0, 300) : '');
-  const badges = (trust.badges ?? [])
-    .map((b) => ({
-      id: text(b.id),
-      title: text(b.title),
-      description: text(b.description),
-      image: isHttpUrl(b.image) ? b.image : '',
-      link: isHttpUrl(b.link) ? b.link : '',
-    }))
-    .filter((b) => demoMode || b.image);
-  const documents = (trust.documents ?? [])
-    .map((d) => ({ title: text(d.title), number: text(d.number), issuer: text(d.issuer), link: isHttpUrl(d.link) ? d.link : '' }))
-    .filter((d) => demoMode || d.number || d.link);
-  const org = trust.organization ?? {};
-  return {
-    organization: Object.fromEntries(['name', 'registrationNo', 'address', 'phone', 'email'].map((k) => [k, text(org[k])])),
-    partnerCharity: Object.fromEntries(['name', 'licenseNo', 'licenseIssuer'].map((k) => [k, text(trust.partnerCharity?.[k])])),
-    badges,
-    documents,
-    sourceCodeUrl: isHttpUrl(trust.sourceCodeUrl) ? trust.sourceCodeUrl : '',
-  };
-}
+import { currentTrust, publicTrust } from '../trust.js';
 
 export default async function publicRoutes(app, ctx) {
   const { db, config } = ctx;
-  const trustPublic = sanitizeTrust(ctx.trust, config.demoMode);
 
   app.get('/api/meta', async () => ({
     demoMode: config.demoMode,
@@ -45,9 +12,10 @@ export default async function publicRoutes(app, ctx) {
     provinces: PROVINCES,
     paymentProvider: ctx.payment.name,
     billPayLive: ctx.billPay.live !== false,
+    creator: currentTrust(ctx).creator,
   }));
 
-  app.get('/api/trust', async () => trustPublic);
+  app.get('/api/trust', async () => publicTrust(ctx));
 
   app.get('/api/stats', async () => {
     const paid = db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS total FROM cases WHERE status = 'paid'").get();

@@ -5,21 +5,23 @@
   "server": {
     "url": "https://mehrpol.example.ir",
     "errorPath": "index.html",
-    "allowNavigation": ["payment.zarinpal.com", "sandbox.zarinpal.com", "*.shaparak.ir"]
+    "allowNavigation": [
+      "payment.zarinpal.com",
+      "sandbox.zarinpal.com",
+      "*.shaparak.ir"
+    ]
   },
   "android": {
-    "backgroundColor": "#fbf6ee"
+    "backgroundColor": "#fbf8f3"
   },
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 1200,
-      "backgroundColor": "#fbf6ee",
+      "backgroundColor": "#fbf8f3",
       "showSpinner": false
     },
-    "StatusBar": {
-      "backgroundColor": "#0f6e5c",
-      "style": "DARK",
-      "overlaysWebView": false
+    "SystemBars": {
+      "insetsHandling": "css"
     }
   }
 }

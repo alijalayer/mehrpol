@@ -100,6 +100,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
   detail TEXT,
   at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS audit_actor ON audit_log(actor_id, id);
+
+-- Settings the admin edits from the panel (trust page, app release), stored as JSON.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Files meant for everyone (trust badges, official documents, the Android app). Not encrypted.
+CREATE TABLE IF NOT EXISTS public_files (
+  id TEXT PRIMARY KEY,
+  stored_name TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `;
 
 /** Columns added after the first release; ALTER TABLE runs only when a column is missing. */
@@ -109,6 +126,7 @@ const ADDED_COLUMNS = [
   ['users', 'bio', "TEXT NOT NULL DEFAULT ''"],
   ['users', 'is_demo', 'INTEGER NOT NULL DEFAULT 0'],
   ['donations', 'closed_case', 'INTEGER NOT NULL DEFAULT 0'],
+  ['users', 'last_login_at', 'INTEGER'],
 ];
 
 export function openDb(file) {
@@ -133,6 +151,16 @@ export function tx(db, fn) {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+export function getSetting(db, key, fallback) {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? JSON.parse(row.value) : fallback;
+}
+
+export function setSetting(db, key, value) {
+  db.prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
+    .run(key, JSON.stringify(value), Date.now());
 }
 
 export function audit(db, actorId, action, target, detail) {

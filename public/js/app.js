@@ -7,9 +7,10 @@ import { accountView, myCaseView } from './views/account.js';
 import { newRequestView } from './views/new-request.js';
 import { receiptView } from './views/receipt.js';
 import { ledgerView, trustView } from './views/trust.js';
-import { adminView, adminCaseView } from './views/admin.js';
+import { adminView, adminCaseView, adminUserView } from './views/admin.js';
 import { certificateView, donorView, honorView } from './views/honor.js';
 import { profileMenu } from './rewards-ui.js';
+import { latestRelease, updateNotice } from './update.js';
 
 const routes = [
   [/^\/$/, homeView, 'home'],
@@ -27,6 +28,7 @@ const routes = [
   [/^\/(certificate|verify)\/(MP[A-Z0-9]{10})$/, certificateView, 'me'],
   [/^\/admin$/, adminView, 'me', { admin: true }],
   [/^\/admin\/case\/([\w-]{36})$/, adminCaseView, 'me', { admin: true }],
+  [/^\/admin\/user\/([\w-]{36})$/, adminUserView, 'me', { admin: true }],
 ];
 
 export function navigate(path) {
@@ -66,10 +68,24 @@ async function render() {
   main.focus({ preventScroll: true });
 }
 
+function themeButton() {
+  const btn = h('button', { class: 'theme-btn', type: 'button' });
+  const draw = () => {
+    const dark = window.mehrpolTheme.current() === 'dark';
+    btn.replaceChildren(icon(dark ? 'sun' : 'moon'));
+    btn.setAttribute('aria-label', dark ? 'حالت روز' : 'حالت شب');
+    btn.title = dark ? 'حالت روز' : 'حالت شب';
+  };
+  btn.onclick = () => window.mehrpolTheme.toggle();
+  document.addEventListener('themechange', draw);
+  draw();
+  return btn;
+}
+
 export function renderHeader() {
   const slot = document.getElementById('header-actions');
   if (!state.user) {
-    slot.replaceChildren(h('a', { class: 'btn btn-sm', href: '#/login' }, 'ورود / ثبت‌نام'));
+    slot.replaceChildren(themeButton(), h('a', { class: 'btn btn-sm', href: '#/login' }, 'ورود / ثبت‌نام'));
     return;
   }
   const logout = async () => {
@@ -79,8 +95,16 @@ export function renderHeader() {
     navigate('/');
   };
   // replaceChildren would print a null as text, so only real nodes are passed.
-  const adminLink = state.user.role === 'admin' ? [h('a', { class: 'btn btn-sm btn-ghost hide-sm', href: '#/admin' }, icon('shield'), 'پنل بررسی')] : [];
-  slot.replaceChildren(...adminLink, profileMenu(logout));
+  const adminLink = state.user.role === 'admin' ? [h('a', { class: 'btn btn-sm btn-ghost hide-sm', href: '#/admin' }, icon('shield'), 'پنل مدیریت')] : [];
+  slot.replaceChildren(themeButton(), ...adminLink, profileMenu(logout));
+}
+
+/** "ایده و ساخت: …" line; the name comes from the admin panel (trust settings). */
+function creatorCredit() {
+  const c = state.meta.creator;
+  if (!c?.name) return '';
+  const who = c.link ? h('a', { href: c.link, target: '_blank', rel: 'noopener noreferrer' }, c.name) : h('strong', {}, c.name);
+  return h('div', { class: 'credit' }, icon('sparkle'), `${c.role || 'ایده و ساخت'}:`, who);
 }
 
 function shell() {
@@ -102,6 +126,7 @@ function shell() {
       h('a', { class: 'brand', href: '#/' }, h('img', { src: '/icons/logo.svg', alt: '', width: 34, height: 34 }), h('span', {}, brand.name)),
       h('nav', { class: 'topnav', 'aria-label': 'منوی اصلی' }, [...nav.slice(0, 4), nav[5]].map(([tab, href, , label]) => h('a', { href, dataset: { tab } }, label))),
       h('div', { id: 'header-actions', class: 'header-actions' })),
+    h('div', { id: 'notice', class: 'notice-slot' }),
     h('main', { id: 'main', tabindex: '-1' }),
     h('footer', { class: 'footer' },
       h('div', {}, h('strong', {}, brand.name), ' — ', brand.tagline),
@@ -109,12 +134,18 @@ function shell() {
         h('a', { href: '#/trust' }, 'مجوزها و نمادها'),
         h('a', { href: '#/ledger' }, 'دفتر پرداخت‌ها'),
         h('a', { href: '#/honor' }, 'تالار افتخار'),
-        h('a', { href: '#/trust' }, 'کد متن‌باز')),
+        h('a', { href: '#/trust' }, 'کد متن‌باز'),
+        h('a', { id: 'apk-link', href: '/download/mehrpol.apk', hidden: true }, 'دریافت اپ اندروید')),
+      creatorCredit(),
       h('small', {}, 'اطلاعات هویتی متقاضیان رمزنگاری می‌شود و هرگز به خیّرین نمایش داده نمی‌شود.')),
     h('nav', { class: 'tabbar', 'aria-label': 'منوی پایین' },
       nav.slice(0, 5).map(([tab, href, ic, label]) => h('a', { href, dataset: { tab } }, icon(ic), h('span', {}, label)))),
   );
   renderHeader();
+  updateNotice().then((bar) => bar && document.getElementById('notice').replaceChildren(bar)).catch(() => {});
+  latestRelease().then((r) => {
+    if (r.available && /Android/.test(navigator.userAgent)) document.getElementById('apk-link').hidden = false;
+  });
 }
 
 async function boot() {

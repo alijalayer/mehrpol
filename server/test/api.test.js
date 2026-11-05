@@ -234,3 +234,89 @@ describe('full flow', () => {
     assert.equal(one.statusCode, 200);
   });
 });
+
+describe('admin panel', () => {
+  let admin;
+  let member;
+  const multipart = (parts) => {
+    const b = '----y';
+    const chunks = parts.map(([name, value, filename]) => Buffer.concat([
+      Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="${name}"${filename ? `; filename="${filename}"` : ''}\r\n\r\n`),
+      Buffer.isBuffer(value) ? value : Buffer.from(value), Buffer.from('\r\n')]));
+    return { body: Buffer.concat([...chunks, Buffer.from(`--${b}--\r\n`)]), type: `multipart/form-data; boundary=${b}` };
+  };
+
+  before(async () => {
+    admin = await login('09120000001');
+    member = await login('09127777777');
+  });
+
+  test('members cannot open any admin panel route', async () => {
+    for (const url of ['/api/admin/overview', '/api/admin/users', '/api/admin/donations', '/api/admin/events', '/api/admin/trust', '/api/admin/app']) {
+      const res = await app.inject({ method: 'GET', url, headers: member });
+      assert.equal(res.statusCode, 403, url);
+    }
+  });
+
+  test('dashboard counts users and shows sign-ins with device and IP', async () => {
+    const o = (await app.inject({ method: 'GET', url: '/api/admin/overview', headers: admin })).json();
+    assert.ok(o.users.total >= 2);
+    const login = o.events.find((e) => e.action === 'user.login' && e.phone === '09127777777');
+    assert.ok(login && login.detail.ip, 'sign-in event with IP');
+  });
+
+  test('user list and profile reveal identity only to the admin, and the viewing is logged', async () => {
+    const list = (await app.inject({ method: 'GET', url: '/api/admin/users?q=0912555', headers: admin })).json();
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].fullName, 'نام آزمایشی');
+    const one = (await app.inject({ method: 'GET', url: `/api/admin/users/${list.items[0].id}`, headers: admin })).json();
+    assert.equal(one.nationalCode, '0499370899');
+    assert.equal(one.cases.length, 1);
+    const ev = (await app.inject({ method: 'GET', url: '/api/admin/events?type=admin', headers: admin })).json();
+    assert.ok(ev.items.some((e) => e.action === 'admin.user.viewed'));
+  });
+
+  test('trust page edits are cleaned before they go public', async () => {
+    const res = await app.inject({ method: 'PUT', url: '/api/admin/trust', headers: admin, payload: {
+      creator: { name: 'سازنده', role: 'ایده‌پرداز', link: 'javascript:alert(1)' },
+      badges: [{ id: 'enamad', title: 'نماد', image: '/files/../../etc/passwd', link: 'https://enamad.ir/x' }],
+    } });
+    assert.equal(res.statusCode, 200, res.body);
+    const pub = (await app.inject({ method: 'GET', url: '/api/trust' })).json();
+    assert.equal(pub.creator.name, 'سازنده');
+    assert.equal(pub.creator.link, '');
+    assert.equal(pub.badges.length, 0, 'a badge without a valid image stays hidden outside demo mode');
+    const meta = (await app.inject({ method: 'GET', url: '/api/meta' })).json();
+    assert.equal(meta.creator.name, 'سازنده');
+  });
+
+  test('public files are type-checked and served safely', async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 1)]);
+    const up = multipart([['file', png, 'badge.png']]);
+    const res = await app.inject({ method: 'POST', url: '/api/admin/files', headers: { ...admin, 'content-type': up.type }, payload: up.body });
+    assert.equal(res.statusCode, 200, res.body);
+    const file = await app.inject({ method: 'GET', url: res.json().url });
+    assert.equal(file.headers['content-type'], 'image/png');
+    assert.match(file.headers['content-security-policy'], /sandbox/);
+    const bad = multipart([['file', Buffer.from('<html>'.padEnd(64)), 'x.png']]);
+    const r2 = await app.inject({ method: 'POST', url: '/api/admin/files', headers: { ...admin, 'content-type': bad.type }, payload: bad.body });
+    assert.equal(r2.statusCode, 415);
+  });
+
+  test('a published APK is offered to older app versions and downloads', async () => {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/app/latest' })).json().available, false);
+    const notApk = multipart([['version', '1.0.3'], ['versionCode', '3'], ['file', Buffer.from('not a zip at all'), 'x.apk']]);
+    const r1 = await app.inject({ method: 'POST', url: '/api/admin/app', headers: { ...admin, 'content-type': notApk.type }, payload: notApk.body });
+    assert.equal(r1.statusCode, 415);
+    const apk = Buffer.concat([Buffer.from('PK\x03\x04', 'latin1'), Buffer.alloc(32), Buffer.from('AndroidManifest.xml'), Buffer.alloc(32)]);
+    const good = multipart([['version', '1.0.3'], ['versionCode', '3'], ['notes', 'رنگ‌های تازه'], ['file', apk, 'mehrpol.apk']]);
+    const r2 = await app.inject({ method: 'POST', url: '/api/admin/app', headers: { ...admin, 'content-type': good.type }, payload: good.body });
+    assert.equal(r2.statusCode, 200, r2.body);
+    const latest = (await app.inject({ method: 'GET', url: '/api/app/latest' })).json();
+    assert.equal(latest.versionCode, 3);
+    const dl = await app.inject({ method: 'GET', url: latest.url });
+    assert.equal(dl.statusCode, 200);
+    assert.match(dl.headers['content-disposition'], /mehrpol-1\.0\.3\.apk/);
+    assert.equal(dl.rawPayload.length, apk.length);
+  });
+});
