@@ -109,6 +109,75 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at INTEGER NOT NULL
 );
 
+-- Platform income, kept apart from donations so every toman given to families stays traceable.
+CREATE TABLE IF NOT EXISTS revenue (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('tip','gift_fee','circle_fee','csr','license','other')),
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  donation_id TEXT REFERENCES donations(id),
+  user_id TEXT REFERENCES users(id),
+  note TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS revenue_time ON revenue(created_at);
+
+-- «کارت هدیهٔ مهر»: a gift, a memorial («به یاد») or a vow («نذر»), paid as a donation.
+CREATE TABLE IF NOT EXISTS gift_cards (
+  code TEXT PRIMARY KEY,
+  donation_id TEXT NOT NULL UNIQUE REFERENCES donations(id),
+  kind TEXT NOT NULL CHECK (kind IN ('gift','memory','nazr')),
+  theme TEXT NOT NULL,
+  from_name TEXT NOT NULL,
+  to_name TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  paid INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+-- «حلقهٔ مهر» monthly membership.
+CREATE TABLE IF NOT EXISTS circle_members (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  monthly_amount INTEGER NOT NULL,
+  category TEXT,
+  province TEXT,
+  status TEXT NOT NULL CHECK (status IN ('active','cancelled')),
+  paid_until INTEGER NOT NULL,
+  started_at INTEGER NOT NULL
+);
+
+-- Company-sponsored campaigns (CSR), optionally matching what the public gives.
+CREATE TABLE IF NOT EXISTS campaigns (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  sponsor TEXT NOT NULL,
+  sponsor_logo TEXT NOT NULL DEFAULT '',
+  sponsor_link TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  category TEXT,
+  province TEXT,
+  goal INTEGER NOT NULL,
+  match_percent INTEGER NOT NULL DEFAULT 0,
+  match_cap INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  ends_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+-- Partnership requests from companies and charities.
+CREATE TABLE IF NOT EXISTS leads (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('company','charity')),
+  org TEXT NOT NULL,
+  contact TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  plan TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','won','lost')),
+  created_at INTEGER NOT NULL
+);
+
 -- Files meant for everyone (trust badges, official documents, the Android app). Not encrypted.
 CREATE TABLE IF NOT EXISTS public_files (
   id TEXT PRIMARY KEY,
@@ -127,6 +196,15 @@ const ADDED_COLUMNS = [
   ['users', 'is_demo', 'INTEGER NOT NULL DEFAULT 0'],
   ['donations', 'closed_case', 'INTEGER NOT NULL DEFAULT 0'],
   ['users', 'last_login_at', 'INTEGER'],
+  // Senior manager: manages the admin team, settings and income (role must also be 'admin').
+  ['users', 'is_owner', 'INTEGER NOT NULL DEFAULT 0'],
+  // extra: platform income charged on top of the donation (tip or fee), never given to a case.
+  ['donations', 'extra', 'INTEGER NOT NULL DEFAULT 0'],
+  // kind: case | fund | gift | circle | campaign; ref: the gift code, campaign id …
+  ['donations', 'kind', "TEXT NOT NULL DEFAULT 'case'"],
+  ['donations', 'ref', 'TEXT'],
+  // source: for automatic allocations, the gift/circle/campaign donation the money came from.
+  ['donations', 'source', 'TEXT'],
 ];
 
 export function openDb(file) {

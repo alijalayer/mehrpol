@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { publicCase } from '../domain.js';
 import { audit, getSetting, setSetting } from '../db.js';
-import { HttpError, requireAdmin, sniffFile } from '../guards.js';
-import { cleanText, decryptText } from '../security.js';
+import { HttpError, requireAdmin, requireOwner, sniffFile } from '../guards.js';
+import { cleanText, decryptText, normalizePhone } from '../security.js';
 import { cleanTrust, currentTrust } from '../trust.js';
 
 const UUID = '^[0-9a-f-]{36}$';
@@ -91,7 +91,7 @@ export default async function manageRoutes(app, ctx) {
     return {
       items: rows.map((u) => ({
         id: u.id, phone: u.phone, role: u.role, displayName: u.display_name, fullName: name(u.full_name_enc),
-        createdAt: u.created_at, lastLoginAt: u.last_login_at, cases: u.cases, gifts: u.gifts, given: u.given, isDemo: !!u.is_demo,
+        createdAt: u.created_at, lastLoginAt: u.last_login_at, cases: u.cases, gifts: u.gifts, given: u.given, isDemo: !!u.is_demo, isOwner: !!u.is_owner,
       })),
     };
   });
@@ -102,7 +102,7 @@ export default async function manageRoutes(app, ctx) {
     if (!u) throw new HttpError(404, 'کاربر پیدا نشد');
     audit(db, admin.id, 'admin.user.viewed', u.id);
     return {
-      id: u.id, phone: u.phone, role: u.role, displayName: u.display_name, bio: u.bio, publicProfile: !!u.public_profile, slug: u.slug,
+      id: u.id, phone: u.phone, role: u.role, isOwner: !!u.is_owner, displayName: u.display_name, bio: u.bio, publicProfile: !!u.public_profile, slug: u.slug,
       fullName: name(u.full_name_enc), nationalCode: name(u.national_code_enc), createdAt: u.created_at, lastLoginAt: u.last_login_at, isDemo: !!u.is_demo,
       cases: db.prepare('SELECT * FROM cases WHERE user_id = ? ORDER BY created_at DESC').all(u.id).map((r) => ({ ...publicCase(r), id: r.id })),
       donations: db.prepare(`SELECT d.id, d.amount, d.status, d.gateway, d.ref_id AS refId, d.created_at AS createdAt, c.title AS caseTitle, c.id AS caseId
@@ -151,7 +151,7 @@ export default async function manageRoutes(app, ctx) {
   });
 
   app.put('/api/admin/trust', { bodyLimit: 128 * 1024 }, async (req) => {
-    const admin = requireAdmin(req);
+    const admin = requireOwner(req);
     if (!req.body || typeof req.body !== 'object') throw new HttpError(400, 'اطلاعات ارسالی معتبر نیست');
     const saved = cleanTrust({ ...currentTrust(ctx), ...req.body });
     setSetting(db, 'trust', saved);
@@ -160,7 +160,7 @@ export default async function manageRoutes(app, ctx) {
   });
 
   app.post('/api/admin/files', async (req) => {
-    const admin = requireAdmin(req);
+    const admin = requireOwner(req);
     const part = await req.file();
     if (!part) throw new HttpError(400, 'فایلی ارسال نشد');
     const buffer = await part.toBuffer();
@@ -175,6 +175,49 @@ export default async function manageRoutes(app, ctx) {
     return { id, url: `/files/${id}`, mime: kind.mime, size: buffer.length };
   });
 
+  /* ---------- Management team ---------- */
+
+  const teamView = (u) => ({
+    id: u.id, phone: u.phone, displayName: u.display_name, fullName: name(u.full_name_enc), isOwner: !!u.is_owner,
+    founder: config.adminPhones.includes(u.phone), lastLoginAt: u.last_login_at, createdAt: u.created_at,
+  });
+
+  app.get('/api/admin/team', async (req) => {
+    requireAdmin(req);
+    return { items: db.prepare("SELECT * FROM users WHERE role = 'admin' ORDER BY is_owner DESC, created_at").all().map(teamView) };
+  });
+
+  // Adds someone by mobile number (their account is created if they have never signed in) or changes their level.
+  app.post('/api/admin/team', {
+    schema: { body: { type: 'object', required: ['phone', 'level'], properties: { phone: { type: 'string', maxLength: 20 }, level: { type: 'string', enum: ['admin', 'owner'] } } } },
+  }, async (req) => {
+    const owner = requireOwner(req);
+    const phone = normalizePhone(req.body.phone);
+    if (!phone) throw new HttpError(400, 'شمارهٔ موبایل معتبر نیست');
+    const isOwner = req.body.level === 'owner' ? 1 : 0;
+    let u = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
+    if (!u) {
+      db.prepare("INSERT INTO users (id, phone, role, is_owner, created_at) VALUES (?, ?, 'admin', ?, ?)").run(randomUUID(), phone, isOwner, Date.now());
+    } else {
+      if (config.adminPhones.includes(phone) && !isOwner) throw new HttpError(409, 'مدیر بنیان‌گذار همیشه مدیر ارشد می‌ماند');
+      db.prepare("UPDATE users SET role = 'admin', is_owner = ? WHERE id = ?").run(isOwner, u.id);
+    }
+    u = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
+    audit(db, owner.id, 'admin.team.set', u.id, { level: req.body.level });
+    return teamView(u);
+  });
+
+  app.delete('/api/admin/team/:id', { schema: { params: { type: 'object', properties: { id: { type: 'string', pattern: UUID } } } } }, async (req) => {
+    const owner = requireOwner(req);
+    const u = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'admin'").get(req.params.id);
+    if (!u) throw new HttpError(404, 'این شخص عضو تیم مدیریت نیست');
+    if (u.id === owner.id) throw new HttpError(409, 'نمی‌توانید دسترسی خودتان را بردارید');
+    if (config.adminPhones.includes(u.phone)) throw new HttpError(409, 'دسترسی مدیر بنیان‌گذار فقط از تنظیمات سرور برداشته می‌شود');
+    db.prepare("UPDATE users SET role = 'member', is_owner = 0 WHERE id = ?").run(u.id);
+    audit(db, owner.id, 'admin.team.removed', u.id);
+    return { ok: true };
+  });
+
   /* ---------- Android releases ---------- */
 
   app.get('/api/admin/app', async (req) => {
@@ -184,7 +227,7 @@ export default async function manageRoutes(app, ctx) {
 
   // Multipart: fields version, versionCode, notes first, then the .apk file (streamed to disk).
   app.post('/api/admin/app', async (req) => {
-    const admin = requireAdmin(req);
+    const admin = requireOwner(req);
     const part = await req.file({ limits: { fileSize: MAX_APK_BYTES, files: 1, fields: 4 } });
     if (!part) throw new HttpError(400, 'فایل APK ارسال نشد');
     const field = (k) => (typeof part.fields[k]?.value === 'string' ? part.fields[k].value : '');

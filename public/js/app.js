@@ -11,6 +11,8 @@ import { adminView, adminCaseView, adminUserView } from './views/admin.js';
 import { certificateView, donorView, honorView } from './views/honor.js';
 import { profileMenu } from './rewards-ui.js';
 import { latestRelease, updateNotice } from './update.js';
+import { businessView, campaignView, campaignsView, cardView, circleView, giftView } from './views/giving.js';
+import './motion.js';
 
 const routes = [
   [/^\/$/, homeView, 'home'],
@@ -24,6 +26,12 @@ const routes = [
   [/^\/ledger$/, ledgerView, 'trust'],
   [/^\/trust$/, trustView, 'trust'],
   [/^\/honor$/, honorView, 'honor'],
+  [/^\/gift$/, giftView, 'home'],
+  [/^\/card\/([A-Z0-9x]{8})$/, cardView, 'home'],
+  [/^\/circle$/, circleView, 'home'],
+  [/^\/campaigns$/, campaignsView, 'home'],
+  [/^\/campaign\/([a-z0-9-]{3,40})$/, campaignView, 'home'],
+  [/^\/business$/, businessView, 'home'],
   [/^\/donor\/([a-z0-9]{8})$/, donorView, 'honor'],
   [/^\/(certificate|verify)\/(MP[A-Z0-9]{10})$/, certificateView, 'me'],
   [/^\/admin$/, adminView, 'me', { admin: true }],
@@ -134,6 +142,10 @@ function shell() {
         h('a', { href: '#/trust' }, 'مجوزها و نمادها'),
         h('a', { href: '#/ledger' }, 'دفتر پرداخت‌ها'),
         h('a', { href: '#/honor' }, 'تالار افتخار'),
+        h('a', { href: '#/gift' }, 'کارت هدیهٔ مهر'),
+        h('a', { href: '#/circle' }, 'حلقهٔ مهر'),
+        h('a', { href: '#/campaigns' }, 'کمپین‌ها'),
+        h('a', { href: '#/business' }, 'همکاری سازمان‌ها'),
         h('a', { href: '#/trust' }, 'کد متن‌باز'),
         h('a', { id: 'apk-link', href: '/download/mehrpol.apk', hidden: true }, 'دریافت اپ اندروید')),
       creatorCredit(),

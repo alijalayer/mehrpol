@@ -13,7 +13,7 @@ export async function homeView(page) {
     h('section', { class: 'hero' },
       h('div', { class: 'hero-text' },
         h('span', { class: 'eyebrow' }, icon('shield'), 'شفاف، متن‌باز و بدون واسطهٔ نقدی'),
-        h('h1', {}, 'قبض یک خانواده را ', h('em', {}, 'همین امروز'), ' پرداخت کنید'),
+        h('h1', {}, 'نگذاریم ', h('em', {}, 'چراغ هیچ خانه‌ای'), ' خاموش بماند'),
         h('p', { class: 'lead' }, `${brand.name} قبض‌ها و بدهی‌های تأییدشدهٔ خانواده‌های نیازمند را به خیّرین نشان می‌دهد. پول شما مستقیم به ادارهٔ برق، آب، گاز یا طلبکار می‌رسد؛ نه به دست هیچ واسطه‌ای.`),
         h('div', { class: 'hero-actions' },
           h('a', { class: 'btn btn-primary btn-lg', href: '#/cases' }, icon('heart'), 'می‌خواهم کمک کنم'),
@@ -38,6 +38,13 @@ export async function homeView(page) {
       h('h2', {}, 'به چه چیزی کمک کنم؟'),
       h('div', { class: 'cat-grid' }, Object.entries(categories).map(([key, c]) =>
         h('a', { class: `cat-tile cat-${key}`, href: `#/cases?cat=${key}` }, icon(CATEGORY_ICONS[key]), h('span', {}, c.label))))),
+    h('section', { class: 'section' },
+      h('h2', {}, 'راه‌های بیشتر برای مهربانی'),
+      h('div', { class: 'ways' },
+        way('gift', 'کارت هدیهٔ مهر', 'به‌جای هدیهٔ تولد، به یاد عزیزی که رفته یا برای ادای نذر، قبض یک خانواده را بدهید و کارت زیبایش را بفرستید.', '#/gift', 'ساخت کارت'),
+        way('users', 'حلقهٔ مهر', 'ماهی یک مبلغ ثابت؛ مهرپل آن را به پرونده‌های نزدیک به تکمیل می‌رساند و گزارش اثرش را می‌بینید.', '#/circle', 'عضویت ماهانه'),
+        way('trophy', 'کمپین‌ها', 'کمپین‌هایی که شرکت‌ها حامی‌شان هستند؛ گاهی هر تومان شما دو برابر می‌شود.', '#/campaigns', 'دیدن کمپین‌ها'),
+        way('house', 'سازمان‌ها و خیریه‌ها', 'مسئولیت اجتماعی شفاف برای شرکت‌ها و همین سامانه با نام خیریهٔ شما.', '#/business', 'همکاری'))),
     h('section', { class: 'section reward-teaser' },
       h('div', { class: 'teaser-text' },
         h('span', { class: 'eyebrow' }, icon('trophy'), 'دستاوردها'),
@@ -63,6 +70,8 @@ export async function homeView(page) {
   else featured.replaceWith(h('p', { class: 'muted' }, 'به‌زودی اولین درخواست‌های تأییدشده اینجا نمایش داده می‌شوند.'));
 }
 
-const step = (ic, title, text) => h('div', { class: 'step' }, h('div', { class: 'step-icon' }, icon(ic)), h('h3', {}, title), h('p', { class: 'muted' }, text));
-const stat = (value, label) => h('div', { class: 'stat' }, h('strong', {}, value), h('span', {}, label));
+const step = (ic, title, text) => h('div', { class: 'step reveal' }, h('div', { class: 'step-icon' }, icon(ic)), h('h3', {}, title), h('p', { class: 'muted' }, text));
+const stat = (value, label) => h('div', { class: 'stat reveal' }, h('strong', {}, value), h('span', {}, label));
+const way = (ic, title, text, href, cta) => h('a', { class: 'card way tilt reveal', href },
+  h('span', { class: 'way-icon' }, icon(ic)), h('h3', {}, title), h('p', { class: 'muted small' }, text), h('span', { class: 'way-cta' }, cta, icon('arrow')));
 const trustItem = (ic, title, text) => h('div', { class: 'trust-item' }, icon(ic), h('div', {}, h('strong', {}, title), h('p', { class: 'muted small' }, text)));

@@ -1,11 +1,12 @@
 import { api, state } from '../api.js';
 import { currentQuery, navigate } from '../app.js';
 import { CATEGORY_ICONS, busy, emptyState, fa, h, icon, moneyInput, progress, relTime, skeletonCards, toAscii, toast, toman } from '../ui.js';
+import { revenueConfig, tipPicker } from './giving.js';
 
 export function caseCard(c) {
   const cat = state.meta.categories[c.category];
   const remaining = c.amount - c.raised;
-  return h('a', { class: 'card case-card', href: `#/case/${c.code}` },
+  return h('a', { class: 'card case-card tilt reveal', href: `#/case/${c.code}` },
     h('div', { class: 'case-top' },
       h('span', { class: `cat-chip cat-${c.category}` }, icon(CATEGORY_ICONS[c.category]), cat.label),
       c.isDemo ? h('span', { class: 'pill pill-muted' }, 'نمونه') : null,
@@ -103,14 +104,22 @@ function donateForm(c, remaining) {
   const setAmount = (v) => {
     amount.value = fa(v);
     for (const b of chips.children) b.classList.toggle('active', Number(b.dataset.v) === v);
+    tip?.redraw();
   };
+  // The tip choice loads its options; until then the form works without it.
+  let tip = null;
+  const tipSlot = h('div', {});
+  revenueConfig().then((cfg) => {
+    tip = tipPicker(amount, cfg);
+    tipSlot.replaceChildren(tip.el);
+  }).catch(() => {});
   const chips = h('div', { class: 'amount-chips' },
     presets.map((v) => h('button', { type: 'button', class: 'chip', dataset: { v }, onclick: () => setAmount(v) }, fa(v / 1000) + ' هزار')),
     h('button', { type: 'button', class: 'chip chip-strong', dataset: { v: remainingToman }, onclick: () => setAmount(remainingToman) }, 'کل باقی‌مانده'));
   const anon = h('input', { type: 'checkbox', checked: true, id: 'anon' });
   const submit = h('button', { type: 'submit', class: 'btn btn-primary btn-block' }, icon('heart'), 'پرداخت امن');
   const form = h('form', { class: 'donate-form' },
-    h('label', { class: 'label' }, 'چقدر کمک می‌کنید؟'), chips, amount,
+    h('label', { class: 'label' }, 'چقدر کمک می‌کنید؟'), chips, amount, tipSlot,
     h('label', { class: 'check' }, anon, 'نامم در هیچ‌جا نمایش داده نشود'),
     submit,
     h('p', { class: 'muted small center' }, icon('lock'), state.meta.paymentProvider === 'mock' ? 'درگاه آزمایشی — پولی جابه‌جا نمی‌شود' : 'انتقال به درگاه امن شاپرک'));
@@ -123,7 +132,7 @@ function donateForm(c, remaining) {
     const v = amount.raw();
     if (!v) return toast('مبلغ را وارد کنید', 'error');
     try {
-      const res = await api.post('/api/donations', { caseCode: c.code, amountToman: toAscii(v), anonymous: anon.checked });
+      const res = await api.post('/api/donations', { caseCode: c.code, amountToman: toAscii(v), anonymous: anon.checked, tipPercent: tip?.percent() ?? 0 });
       location.href = res.redirectUrl;
     } catch (err) {
       toast(err.message, 'error');

@@ -8,7 +8,7 @@ const OTP_RESEND_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 
 export function userView(u) {
-  return { id: u.id, phone: u.phone, role: u.role, displayName: u.display_name, hasIdentity: Boolean(u.has_identity) };
+  return { id: u.id, phone: u.phone, role: u.role, isOwner: Boolean(u.is_owner), displayName: u.display_name, hasIdentity: Boolean(u.has_identity) };
 }
 
 export default async function authRoutes(app, ctx) {
@@ -62,14 +62,16 @@ export default async function authRoutes(app, ctx) {
     }
     db.prepare('DELETE FROM otps WHERE phone = ?').run(phone);
 
-    const role = config.adminPhones.includes(phone) ? 'admin' : 'member';
+    // ADMIN_PHONES are the founding senior managers and always get that role back. Everyone
+    // else keeps the role a senior manager gave them in the panel (member by default).
+    const founder = config.adminPhones.includes(phone);
     let user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone);
     if (!user) {
       const id = randomUUID();
-      db.prepare('INSERT INTO users (id, phone, role, created_at) VALUES (?, ?, ?, ?)').run(id, phone, role, Date.now());
+      db.prepare('INSERT INTO users (id, phone, role, is_owner, created_at) VALUES (?, ?, ?, ?, ?)').run(id, phone, founder ? 'admin' : 'member', founder ? 1 : 0, Date.now());
       audit(db, id, 'user.created');
-    } else if (user.role !== role) {
-      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, user.id);
+    } else if (founder && (user.role !== 'admin' || !user.is_owner)) {
+      db.prepare("UPDATE users SET role = 'admin', is_owner = 1 WHERE id = ?").run(user.id);
     }
     user = db.prepare('SELECT *, full_name_enc IS NOT NULL AS has_identity FROM users WHERE phone = ?').get(phone);
     // Shown to the admin as "who signed in, when, from where".

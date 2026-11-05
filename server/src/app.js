@@ -17,6 +17,7 @@ import donationRoutes from './routes/donations.js';
 import adminRoutes from './routes/admin.js';
 import rewardRoutes from './routes/rewards.js';
 import manageRoutes from './routes/manage.js';
+import revenueRoutes from './routes/revenue.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -29,6 +30,8 @@ export async function buildApp(options = {}) {
   });
 
   const db = openDb(config.dbFile);
+  // Founding senior managers (ADMIN_PHONES) get their role even before their next sign-in.
+  for (const phone of config.adminPhones) db.prepare("UPDATE users SET role = 'admin', is_owner = 1 WHERE phone = ?").run(phone);
   const trust = loadTrust();
   const ctx = {
     config,
@@ -90,7 +93,7 @@ export async function buildApp(options = {}) {
     const token = req.cookies?.[ctx.cookieName];
     if (!token) return;
     const row = db.prepare(`
-      SELECT u.id, u.phone, u.role, u.display_name, u.full_name_enc IS NOT NULL AS has_identity
+      SELECT u.id, u.phone, u.role, u.is_owner, u.display_name, u.full_name_enc IS NOT NULL AS has_identity
       FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.expires_at > ?`).get(sha256(token), Date.now());
     if (row) req.user = row;
@@ -112,6 +115,7 @@ export async function buildApp(options = {}) {
   await app.register(adminRoutes, ctx);
   await app.register(rewardRoutes, ctx);
   await app.register(manageRoutes, ctx);
+  await app.register(revenueRoutes, ctx);
 
   await app.register(fastifyStatic, {
     root: join(ROOT, 'public'),

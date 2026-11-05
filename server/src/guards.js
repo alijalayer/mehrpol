@@ -18,6 +18,13 @@ export function requireAdmin(req) {
   return user;
 }
 
+/** Senior managers («مدیر ارشد»): everything an admin can do, plus the team, settings and income. */
+export function requireOwner(req) {
+  const user = requireAdmin(req);
+  if (!user.is_owner) throw new HttpError(403, 'این بخش فقط برای مدیر ارشد است');
+  return user;
+}
+
 /** Fixed-window rate limiter kept in memory (one process). */
 export class RateLimiter {
   #hits = new Map();
