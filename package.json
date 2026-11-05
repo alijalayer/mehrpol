@@ -12,7 +12,7 @@
     "start": "node server/src/server.js",
     "dev": "node --watch server/src/server.js",
     "seed:demo": "node server/scripts/seed-demo.js",
-    "test": "node --test server/test/"
+    "test": "node --test \"server/test/*.test.js\""
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
