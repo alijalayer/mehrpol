@@ -17,12 +17,20 @@ export default async function authRoutes(app, ctx) {
   const otpHash = (phone, code) => hmac(config.dataKey, `otp:${phone}:${code}`);
 
   app.post('/api/auth/otp', {
-    schema: { body: { type: 'object', required: ['phone'], properties: { phone: { type: 'string', maxLength: 20 } } } },
-  }, async (req) => {
+    schema: { body: { type: 'object', required: ['phone'], properties: { phone: { type: 'string', maxLength: 20 }, adminKey: { type: 'string', maxLength: 100 } } } },
+  }, async (req, reply) => {
     const phone = normalizePhone(req.body.phone);
     if (!phone) throw new HttpError(400, 'شماره موبایل معتبر نیست');
     if (!limiter.take(`otp-ip:${req.ip}`, 15, 60 * 60_000) || !limiter.take(`otp-phone:${phone}`, 6, 60 * 60_000)) {
       throw new HttpError(429, 'درخواست کد بیش از حد مجاز؛ یک ساعت دیگر تلاش کنید');
+    }
+    // Demo mode puts the code on screen, so for admin numbers that alone would let anyone in.
+    // They must also give the manager key (ADMIN_LOGIN_KEY); without one set, admins get no on-screen code.
+    const isAdmin = config.adminPhones.includes(phone) || db.prepare("SELECT 1 FROM users WHERE phone = ? AND role = 'admin'").get(phone);
+    const showCode = config.demoMode && (!isAdmin || (config.adminLoginKey && safeEqual(sha256(String(req.body.adminKey ?? '')), sha256(config.adminLoginKey))));
+    if (config.demoMode && isAdmin && !showCode) {
+      if (!limiter.take(`admin-key:${req.ip}`, 10, 60 * 60_000)) throw new HttpError(429, 'تلاش بیش از حد؛ یک ساعت دیگر امتحان کنید');
+      return reply.status(403).send({ error: req.body.adminKey ? 'کلید مدیریت درست نیست' : 'این شماره مدیر است؛ کلید مدیریت را وارد کنید', needsAdminKey: true });
     }
     const existing = db.prepare('SELECT sent_at FROM otps WHERE phone = ?').get(phone);
     if (existing && Date.now() - existing.sent_at < OTP_RESEND_MS) {
@@ -35,7 +43,7 @@ export default async function authRoutes(app, ctx) {
       .run(phone, otpHash(phone, code), now + OTP_TTL_MS, now);
     await ctx.sms.sendOtp(phone, code);
     // Demo mode shows the code on screen so the app can be presented without an SMS panel.
-    return { ok: true, ttl: OTP_TTL_MS / 1000, ...(config.demoMode ? { demoCode: code } : {}) };
+    return { ok: true, ttl: OTP_TTL_MS / 1000, ...(showCode ? { demoCode: code } : {}) };
   });
 
   app.post('/api/auth/verify', {
