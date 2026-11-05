@@ -14,7 +14,7 @@
 ![Tests](https://img.shields.io/badge/tests-27%20passing-23804a?style=flat-square)
 ![Persian RTL](https://img.shields.io/badge/language-Persian%20%C2%B7%20RTL-f0a53a?style=flat-square)
 
-**ایده و ساخت: [علی جلایر](https://github.com/alijalayer)**
+**ایده و ساخت: [علی جلایری](https://github.com/alijalayer)**
 
 <img src="docs/screenshots/home-light.png" width="210" alt="صفحهٔ اصلی، حالت روز">&nbsp;
 <img src="docs/screenshots/home-dark.png" width="210" alt="صفحهٔ اصلی، حالت شب">&nbsp;
