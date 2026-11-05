@@ -12,7 +12,7 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-0b8a74?style=flat-square)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.13-34d3b4?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-27%20passing-23804a?style=flat-square)
-![RTL](https://img.shields.io/badge/%D9%81%D8%A7%D8%B1%D8%B3%DB%8C-RTL-f0a53a?style=flat-square)
+![Persian RTL](https://img.shields.io/badge/language-Persian%20%C2%B7%20RTL-f0a53a?style=flat-square)
 
 **ایده و ساخت: [علی جلایر](https://github.com/alijalayer)**
 
