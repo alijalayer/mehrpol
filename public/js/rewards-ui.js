@@ -67,6 +67,7 @@ export function profileMenu(onLogout) {
           h('a', { class: 'menu-link', href: '#/circle' }, icon('users'), 'حلقهٔ مهر'),
           h('a', { class: 'menu-link', href: '#/gift' }, icon('gift'), 'کارت هدیهٔ مهر'),
           h('a', { class: 'menu-link', href: '#/honor' }, icon('trophy'), 'تالار افتخار'),
+          h('a', { class: 'menu-link', href: '#/app' }, icon('android'), 'اپ مهرپل'),
           state.user.role === 'admin' ? h('a', { class: 'menu-link', href: '#/admin' }, icon('shield'), 'پنل مدیریت') : null,
           logout));
     } catch {

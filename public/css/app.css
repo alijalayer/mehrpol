@@ -746,3 +746,5 @@ body::after { content: ''; position: fixed; top: 0; inset-inline: 0; height: var
 
 h2 .num.done { background: var(--success); }
 hr.sep { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+.app-icon { border-radius: 22px; box-shadow: var(--shadow-lg); margin-bottom: .5rem; }
