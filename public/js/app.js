@@ -10,9 +10,10 @@ import { ledgerView, trustView } from './views/trust.js';
 import { adminView, adminCaseView, adminUserView } from './views/admin.js';
 import { certificateView, donorView, honorView } from './views/honor.js';
 import { profileMenu } from './rewards-ui.js';
-import { latestRelease, updateNotice } from './update.js';
+import { updateNotice } from './update.js';
 import { businessView, campaignView, campaignsView, cardView, circleView, giftView } from './views/giving.js';
 import './motion.js';
+import { appDownloadView } from './views/app-download.js';
 
 const routes = [
   [/^\/$/, homeView, 'home'],
@@ -32,6 +33,7 @@ const routes = [
   [/^\/campaigns$/, campaignsView, 'home'],
   [/^\/campaign\/([a-z0-9-]{3,40})$/, campaignView, 'home'],
   [/^\/business$/, businessView, 'home'],
+  [/^\/app$/, appDownloadView, 'home'],
   [/^\/donor\/([a-z0-9]{8})$/, donorView, 'honor'],
   [/^\/(certificate|verify)\/(MP[A-Z0-9]{10})$/, certificateView, 'me'],
   [/^\/admin$/, adminView, 'me', { admin: true }],
@@ -147,7 +149,7 @@ function shell() {
         h('a', { href: '#/campaigns' }, 'کمپین‌ها'),
         h('a', { href: '#/business' }, 'همکاری سازمان‌ها'),
         h('a', { href: '#/trust' }, 'کد متن‌باز'),
-        h('a', { id: 'apk-link', href: '/download/mehrpol.apk', hidden: true }, 'دریافت اپ اندروید')),
+        h('a', { href: '#/app' }, 'اپ اندروید و آیفون')),
       creatorCredit(),
       h('small', {}, 'اطلاعات هویتی متقاضیان رمزنگاری می‌شود و هرگز به خیّرین نمایش داده نمی‌شود.')),
     h('nav', { class: 'tabbar', 'aria-label': 'منوی پایین' },
@@ -155,9 +157,6 @@ function shell() {
   );
   renderHeader();
   updateNotice().then((bar) => bar && document.getElementById('notice').replaceChildren(bar)).catch(() => {});
-  latestRelease().then((r) => {
-    if (r.available && /Android/.test(navigator.userAgent)) document.getElementById('apk-link').hidden = false;
-  });
 }
 
 async function boot() {
