@@ -1,5 +1,5 @@
 import { faDate, h, icon } from '../ui.js';
-import { downloadButton, installedVersion, latestRelease } from '../update.js';
+import { downloadButton, faVersion, installedVersion, latestRelease } from '../update.js';
 
 /** The Android app's download page, plus how to add the web app on an iPhone. */
 export async function appDownloadView(page) {
@@ -14,7 +14,7 @@ export async function appDownloadView(page) {
       h('section', { class: 'card' },
         h('h2', {}, icon('android'), 'اندروید'),
         r.available
-          ? [h('p', { class: 'muted small' }, `نسخهٔ ${r.version} · ${(r.size / 1048576).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت · ${faDate(r.publishedAt)}`),
+          ? [h('p', { class: 'muted small' }, `نسخهٔ ${faVersion(r.version)} · ${(r.size / 1048576).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت · ${faDate(r.publishedAt)}`),
             r.notes ? h('p', {}, r.notes) : null,
             downloadButton(r, 'btn btn-primary btn-lg btn-block'),
             h('ol', { class: 'install-steps' },

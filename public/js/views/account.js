@@ -2,7 +2,7 @@ import { api, state } from '../api.js';
 import { currentQuery, navigate, renderHeader } from '../app.js';
 import { CATEGORY_ICONS, busy, emptyState, fa, faDate, field, h, icon, progress, relTime, toast, toman, tomanShort } from '../ui.js';
 import { avatar, levelBadge, levelProgress, medal } from '../rewards-ui.js';
-import { downloadButton, installedVersion, latestRelease } from '../update.js';
+import { downloadButton, faVersion, installedVersion, latestRelease } from '../update.js';
 
 export const STATUS = {
   pending: ['در انتظار بررسی', 'pill-warn'],
@@ -174,7 +174,7 @@ async function appCard() {
   const r = await latestRelease();
   const newer = r.available && r.versionCode > current;
   return h('section', { class: 'card' }, h('h2', {}, icon('android'), 'نسخهٔ برنامه'),
-    h('p', { class: 'muted small' }, newer ? `نسخهٔ ${fa(r.version)} منتشر شده است.` : 'از آخرین نسخه استفاده می‌کنید.'),
+    h('p', { class: 'muted small' }, newer ? `نسخهٔ ${faVersion(r.version)} منتشر شده است.` : 'از آخرین نسخه استفاده می‌کنید.'),
     newer ? downloadButton(r) : null);
 }
 
